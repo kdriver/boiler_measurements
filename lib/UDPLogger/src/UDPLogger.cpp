@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #ifndef ESP32
 #include <ESP8266WiFi.h>
+
 #else
 #include <WiFi.h>
 #endif
-#include <WiFiUDP.h>
+#include <WiFiUdp.h>
 #include "UDPLogger.h"
 
 
