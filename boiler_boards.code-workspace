@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"name": "temperature",
+			"path": "temperature"
+		},
+		{
+			"path": "ldr"
+		},
+		{
+			"path": "lib"
+		},
+		{
+			"path": "sound"
+		}
+	],
+	"settings": {}
+}
