@@ -2,6 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 
+
 StringHandler::StringHandler(const char *text)
 {
     unsigned int len;
