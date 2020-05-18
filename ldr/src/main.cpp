@@ -8,8 +8,7 @@
 
 WiFiUDP  control;
 
-// sid SK59c605e1c770d91fce9a53e75e638ede
-// DVmGmscLmcJjp1st6AAO3m2Y1TmaTRdP
+
 ESP8266WebServer server(80);
 void handleRoot();              // function prototypes for HTTP handlers
 void handleNotFound();
@@ -29,7 +28,7 @@ enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
 
 #define WATCHDOG_INTERVAL 300
 
-bool DEBUG_ON=true;
+bool DEBUG_ON=false;
 
 bool quiet = false;
 unsigned long epoch;
