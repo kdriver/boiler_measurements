@@ -1,44 +1,33 @@
 #include "StringHandler.h"
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 
-StringHandler::StringHandler(const char *text)
+StringHandler::StringHandler(const char *text,unsigned int num_cmds, CommandSet *cmds,unsigned int num_attr, AttributeSet *attrs)
 {
     unsigned int len;
     // copy the string into an internal buffer
     if ( strlen(text) < max_input_length )
     {
-        strcpy(string_copy,text);
+        strncpy(string_copy,text,500);
     }
     len = strlen(string_copy);
     for (unsigned int i=0;i<len;i++)
         string_copy[i] = toupper(string_copy[i]);
     
     num_tokens =0;
-
+    num_commands = num_cmds;
+    commands = cmds;
+    num_attributes = num_attr;
+    attributes = attrs;
 }
 
 StringHandler::~StringHandler()
 {
 
 }
-/*
- while ( *input_iterator == ' ' || *input_iterator == '\n' )
-           input_iterator = input_iterator + 1;
- 
-       dest_iterator = &tokens[token][0];
-       do
-       {
-           *dest_iterator = *input_iterator;
-           dest_iterator = dest_iterator + 1 ;
-           input_iterator = input_iterator + 1;
-           if ( input_iterator[-1] == '=' )
-               break;
-       } while ( *input_iterator != ' '  && *input_iterator != '=' && *input_iterator != '\n' ) ;
-       *dest_iterator = 0;
-       token = token + 1;
- */
+
  
 unsigned int StringHandler::tokenise(void)
 {
@@ -104,49 +93,75 @@ const char *StringHandler::get_token(unsigned int token)
 bool StringHandler::validate(void)
 {
     unsigned int token=0;
-    bool ok = true;
     char *t;
+    bool matched;
     
     Grammar state;
     state = CommandPrimitive;
+    unsigned int i;
+    int expected_tokens;
+    
     
     do {
+        matched = false;
         t = tokens[token];
         switch (state)
         {
             case CommandPrimitive:
-                if (!strncmp(t,"GET",5))
+                for (  i = 0 ; i < num_commands && matched == false ; i++ )
                 {
-                    command = Get;
-                    if ( num_tokens !=  2)
-                        ok = false;
+                        if ( !strcmp(t,commands[i].cmd))
+                        {
+                            the_command = commands[i].name;
+                            matched = true;
+                            expected_tokens =commands[i].tokens;
+                        }
                 }
-                else if (!strncmp(t,"SET",5) )
+                if (matched == true )
                 {
-                    command = Set;
-                    if ( num_tokens != 4 )
-                        ok = false;
+                    if ( expected_tokens > 1 )
+                        state = VariablePrimitive;
+                    else
+                        state = Done;
                 }
                 else
-                    ok = false;
-                state = VariablePrimitive;
+                    state = Done;
             break;
             case VariablePrimitive:
-                if (!strncmp(t,"OFFTHRESHOLD",15))
-                    variable = off_threshold;
-                else if (!strncmp(t,"ONTHRESHOLD",15) )
-                    variable = on_threshold;
+                for (  i = 0 ; i < num_attributes && matched == false ; i++ )
+                {
+                        if ( !strcmp(t,attributes[i].attr))
+                        {
+                            the_attribute = attributes[i].name;
+                            matched = true;
+                        }
+                }
+                if ( matched == true )
+                {
+                    if (expected_tokens > 2 )
+                        state = Equals;
+                    else
+                        state = Done; 
+                }
                 else
-                        ok = false;
-                state = Equals;
+                    state = Done;
                 break;
             case Equals:
-                if (strncmp(t,"=",5) )
-                    ok = false;
-                state = Value;
+                if (!strncmp(t,"=",5) )
+                {
+                    matched = true;
+                    state = Value;
+                }
+                else
+                {
+                    state = Done;
+                }
+                
             break;
             case Value:
                 state = Done;
+                matched = true;
+                the_value = atoi(t);
                 break;
             case Done:
             default:
@@ -155,7 +170,18 @@ bool StringHandler::validate(void)
         }
         
         token++;
-    }while ( token < num_tokens && state != Done && ok == true );
-    return ok;
+    }while ( token < num_tokens && state != Done && matched == true );
+    return matched;
 }
-
+unsigned int StringHandler::get_command(void)
+{
+    return the_command;
+}
+unsigned int StringHandler::get_attribute(void)
+{
+    return the_attribute;
+}
+unsigned int StringHandler::get_value(void)
+{
+    return the_value;
+}

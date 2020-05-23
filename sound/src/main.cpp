@@ -12,6 +12,7 @@
 #include <Webtext.h>
 #include <ESPmDNS.h>
 #include <ArduinoNvs.h>
+#include <ESP_EEPROM.h>
 
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels

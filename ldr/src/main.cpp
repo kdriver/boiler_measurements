@@ -4,10 +4,13 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
+#include <ESP_EEPROM.h>
+enum Command  { Get,Set,Help,Status};
+enum Attribute { OnThreshold,OffThreshold };
 #include <StringHandler.h>
 
-WiFiUDP  control;
 
+WiFiUDP  control;
 
 ESP8266WebServer server(80);
 void handleRoot();              // function prototypes for HTTP handlers
@@ -19,16 +22,20 @@ void handleNotFound();
 #define INFLUXDB_PORT "1337"
 #define INFLUXDB_DATABASE "boiler_measurements"
 
+
+
+CommandSet ldr_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1}};
+AttributeSet ldr_attributes[] = { {"ON_THRESHOLD",OnThreshold},{"OFF_THRESHOLD",OffThreshold}};
+
 enum BoilerState { boiler_is_off,boiler_is_on};
 enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
-
 
 #define ON_THRESHOLD 400
 #define OFF_THRESHOLD 300
 
 #define WATCHDOG_INTERVAL 300
 
-bool DEBUG_ON=false;
+bool DEBUG_ON=true;
 
 bool quiet = false;
 unsigned long epoch;
@@ -42,6 +49,12 @@ unsigned int boiler_switched_on_time;
 unsigned int min_level = 1023;
 unsigned int max_level = 0;
 unsigned int current_level = 0;
+
+struct Persistent {
+  char     initialised[10];
+  unsigned int on_thresh;
+  unsigned int off_thresh;
+} thresholds;
 
 Influxdb influx(INFLUXDB_HOST);
 
@@ -83,6 +96,7 @@ void tick_influx(String text,unsigned int min, unsigned int max,unsigned int cur
 }
 
 void setup(void){
+  char text[100];
   Serial.begin(9600);
   Serial.println("I'm alive");
   
@@ -100,7 +114,7 @@ void setup(void){
   Serial.print("IP address: ");
   Serial.println(address);
 
-if (MDNS.begin("boilerldr")) {              // Start the mDNS responder for esp8266.local
+if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.local
     Serial.println("mDNS responder started");
   } else {
     Serial.println("Error setting up MDNS responder!");
@@ -112,23 +126,40 @@ if (MDNS.begin("boilerldr")) {              // Start the mDNS responder for esp8
   server.onNotFound(handleNotFound);        // When a client requests an unknown URI (i.e. something other than "/"), call function "handleNotFound"
   server.begin(); 
 
+  EEPROM.begin(sizeof(thresholds));
+
+  EEPROM.get(0,thresholds);
+
+  thresholds.initialised[3] = 0;
+
+  if ( strcmp("YES",thresholds.initialised) )
+  {
+    Serial.println("Flash not initialised - set default parameters ");
+    thresholds.on_thresh = ON_THRESHOLD;
+    thresholds.off_thresh = OFF_THRESHOLD;
+    strcpy(thresholds.initialised,"YES");
+    EEPROM.put(0,thresholds);
+    EEPROM.commit();
+  }
+  EEPROM.get(0,thresholds);
+  sprintf(text,"on threshold=%d , off_threshold=%d\n",thresholds.on_thresh,thresholds.off_thresh);
+  Serial.print(text);
+
   // Tell the database we are starting up
 //  tick_influx(String("Initialised_1_0_"+ address),0,1000,0);
 
   for ( int i = 0 ; i < HISTORY_SIZE ; i++ )
     history[i] = 2000;    // 200 is an invalid value from the analogueread
 
-  control.begin(8787);
+  int udp = control.begin(8787);
+  Serial.println("start UDP server on port 8787 " + String(udp)); 
+
 
 }
-void command(String command)
+String command(String command)
 {
   command.toUpperCase();
-  if ( command.startsWith("HELP"))
-  {
-    Serial.println("Usage: [SET | GET | HELP] ");
-  }
-  StringHandler sh(command.c_str());
+  StringHandler sh(command.c_str(),sizeof(ldr_commands)/sizeof(char*),ldr_commands,sizeof(ldr_attributes)/sizeof(char*),ldr_attributes);
   unsigned int tokens;
   tokens = sh.tokenise();
   Serial.print("Found ");
@@ -143,6 +174,53 @@ void command(String command)
        Serial.println(tok);
      }
   }
+  sh.validate();
+  String answer;
+  switch ( sh.get_command() )
+  {
+    case Get:
+      {
+        switch(sh.get_attribute())
+        {
+          case OnThreshold:
+            answer = "On Threshold : " + String(thresholds.on_thresh);
+          break;
+          case OffThreshold:
+            answer = "Off Threshold : " + String(thresholds.off_thresh);
+          break;
+          default:
+            answer = "Unknown attribute " + String(sh.get_token(2));
+          break;
+        }
+      }
+    break;
+    case Set:
+    break;
+    case Status:
+      answer = "On Threshold : " + String(thresholds.on_thresh);
+      answer = answer + "\nOff Threshold : " + String(thresholds.off_thresh);
+    break;
+    case Help:
+    answer = "";
+      for ( unsigned int i = 0 ; i < sizeof(ldr_commands)/sizeof(CommandSet); i++ )
+      {
+        if ( i )
+          answer = answer + " | " + ldr_commands[i].cmd ;
+        else
+          answer = answer + ldr_commands[i].cmd ;
+      }
+      answer = answer + "\n";
+      for ( unsigned int i = 0 ; i < sizeof(ldr_attributes)/sizeof(AttributeSet); i++ )
+      {
+        if ( i )
+          answer = answer + " | " + ldr_attributes[i].attr ;
+        else
+          answer = answer + ldr_attributes[i].attr  ;
+      }
+        
+    break;
+  }
+  return answer;
   
    
 }
@@ -213,7 +291,7 @@ if ( DEBUG_ON  || !(since_epoch % WATCHDOG_INTERVAL) )
  }
   boiler = boiler_no_change;
 
-  if ( (boiler_status == boiler_is_off ) && (a0pin > ON_THRESHOLD) )
+  if ( (boiler_status == boiler_is_off ) && (a0pin > thresholds.on_thresh) )
   {
       smooth_on = smooth_on + 1 ;
       if ( smooth_on == 3 )
@@ -228,7 +306,7 @@ if ( DEBUG_ON  || !(since_epoch % WATCHDOG_INTERVAL) )
     smooth_on = 0;
   }
 
-if ( (boiler_status == boiler_is_on ) && (a0pin <  OFF_THRESHOLD ) )
+if ( (boiler_status == boiler_is_on ) && (a0pin <  thresholds.off_thresh ) )
   {
       smooth_off = smooth_off + 1 ;
       if ( smooth_off == 3 )
