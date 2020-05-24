@@ -160,21 +160,12 @@ String command(String command)
 {
   command.toUpperCase();
   StringHandler sh(command.c_str(),sizeof(ldr_commands)/sizeof(char*),ldr_commands,sizeof(ldr_attributes)/sizeof(char*),ldr_attributes);
-  unsigned int tokens;
-  tokens = sh.tokenise();
-  Serial.print("Found ");
-  Serial.print(tokens);
-  Serial.println(" tokens");
-  for ( unsigned int i =0 ; i < tokens ; i++ )
-  {
-     const char *tok;
-     tok = sh.get_token(i);
-     if ( tok != 0 )
-     {
-       Serial.println(tok);
-     }
-  }
-  sh.validate();
+  
+  sh.tokenise();
+
+  if ( sh.validate() == false )
+    return String("invalid command");
+
   String answer;
   switch ( sh.get_command() )
   {
@@ -195,13 +186,31 @@ String command(String command)
       }
     break;
     case Set:
+    unsigned int value ;
+      value = sh.get_value();
+      switch(sh.get_attribute())
+          {
+            case OnThreshold:
+              thresholds.on_thresh = value;
+              EEPROM.put(0,thresholds);
+              EEPROM.commit();
+            break;
+            case OffThreshold:
+              thresholds.off_thresh = value;
+              EEPROM.put(0,thresholds);
+              EEPROM.commit();
+            break;
+            default:
+              answer = "Unknown attribute " + String(sh.get_token(2));
+            break;
+          }
     break;
     case Status:
       answer = "On Threshold : " + String(thresholds.on_thresh);
-      answer = answer + "\nOff Threshold : " + String(thresholds.off_thresh);
+      answer = answer + "  ,  Off Threshold : " + String(thresholds.off_thresh);
     break;
     case Help:
-    answer = "";
+    answer = "Commands ( ";
       for ( unsigned int i = 0 ; i < sizeof(ldr_commands)/sizeof(CommandSet); i++ )
       {
         if ( i )
@@ -209,7 +218,7 @@ String command(String command)
         else
           answer = answer + ldr_commands[i].cmd ;
       }
-      answer = answer + "\n";
+      answer = answer + " ) , Attributes ( ";
       for ( unsigned int i = 0 ; i < sizeof(ldr_attributes)/sizeof(AttributeSet); i++ )
       {
         if ( i )
@@ -217,6 +226,7 @@ String command(String command)
         else
           answer = answer + ldr_attributes[i].attr  ;
       }
+      answer = answer + " ) \n";
         
     break;
   }
@@ -227,6 +237,7 @@ String command(String command)
 void handleUDPPackets(void) {
   char packet[500];
   int cb = control.parsePacket();
+  String text;
   if (cb) {
     int length;
     length  = control.read(packet, sizeof(packet));
@@ -235,11 +246,10 @@ void handleUDPPackets(void) {
       myData += (char)packet[i];
     }
     Serial.println(myData);
-    command(myData);
-    IPAddress remoteIP = control.remoteIP();
+    text = command(myData);
    
     control.beginPacket(control.remoteIP(),control.remotePort());
-    String answer = remoteIP.toString() + "\n";
+    String answer = "boiler ldr > " + text + "\n";
     control.write(answer.c_str() );
     control.endPacket();
 
