@@ -286,6 +286,8 @@ void loop() {
 
   delay(500);
 
+  MDNS.update();
+
   handleUDPPackets();
 
   unsigned int a0pin ;

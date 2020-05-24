@@ -6,6 +6,8 @@
 #include "UDPLogger.h"
 #include <ESP8266mDNS.h>
 
+const char compile_date[] = __DATE__ " " __TIME__;
+
 #define INFLUXDB_HOST "piaware.local"
 #define INFLUXDB_PORT "1337"
 #define INFLUXDB_DATABASE "boiler_measurements"
@@ -51,8 +53,8 @@ loggit.init();
         loggit.send("failed to start mDNS responder\n");
   }
     else{}
-      Serial.println("mDNS responder started");
-      loggit.send("mDNS started OK\n");
+      Serial.println("mDNS dallas.local responder started");
+      loggit.send("mDNS dallas.local started OK\n");
       
 }
 
@@ -68,8 +70,9 @@ void setup() {
   Serial.print("Connecting to ");
   Serial.println(ssid); 
   connect_to_wifi();
-  Serial.println("");
-  Serial.println("WiFi connected"); 
+  Serial.println("Built on " + String(compile_date)+ "\n");
+  Serial.print("Connected to cottage : IP Address ");
+
   server.begin();
   Serial.println("Server started");
   Serial.print("Use this URL to connect: ");
@@ -146,6 +149,8 @@ void processWebRequest(WiFiClient client)
 
 void loop() {
   float temperatureC;
+
+  MDNS.update();
   
   WiFiClient client = server.available();
   if (client) {  
