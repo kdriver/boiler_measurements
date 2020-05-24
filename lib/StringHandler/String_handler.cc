@@ -6,7 +6,7 @@
 
 StringHandler::StringHandler(const char *text,unsigned int num_cmds, CommandSet *cmds,unsigned int num_attr, AttributeSet *attrs)
 {
-    unsigned int len;
+    unsigned long len;
     // copy the string into an internal buffer
     if ( strlen(text) < max_input_length )
     {
@@ -75,10 +75,16 @@ unsigned int StringHandler::tokenise(void)
                     *dest_iterator = *input_iterator;
                     dest_iterator = dest_iterator + 1 ;
                     input_iterator = input_iterator + 1;
+                    if ( *input_iterator == 0 )
+                    {
+                        *dest_iterator = 0;
+                        token = token + 1 ;
+                    }
                     break;
             }
           
     }  while ((*input_iterator != 0 ) && (token < 5 ));
+    
     
     num_tokens = token;
     
@@ -87,7 +93,10 @@ unsigned int StringHandler::tokenise(void)
 const char *StringHandler::get_token(unsigned int token)
 {
     // forst token is at 0 index
-    return &tokens[token][0];
+    if ( token < num_tokens )
+        return &tokens[token][0];
+    else
+        return "Invalid token";
 }
 
 bool StringHandler::validate(void)
@@ -99,7 +108,7 @@ bool StringHandler::validate(void)
     Grammar state;
     state = CommandPrimitive;
     unsigned int i;
-    int expected_tokens;
+    int expected_tokens=0;
     
     
     do {
