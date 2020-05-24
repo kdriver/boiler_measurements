@@ -180,6 +180,7 @@ bool StringHandler::validate(void)
         
         token++;
     }while ( token < num_tokens && state != Done && matched == true );
+    
     return matched;
 }
 unsigned int StringHandler::get_command(void)

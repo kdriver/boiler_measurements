@@ -6,10 +6,10 @@
 #include <ESP8266WebServer.h>
 #include <ESP_EEPROM.h>
 enum Command  { Get,Set,Help,Status};
-enum Attribute { OnThreshold,OffThreshold };
+enum Attribute { OnThreshold,OffThreshold,Debug };
 #include <StringHandler.h>
 
-
+const char compile_date[] = __DATE__ " " __TIME__;
 WiFiUDP  control;
 
 ESP8266WebServer server(80);
@@ -25,7 +25,7 @@ void handleNotFound();
 
 
 CommandSet ldr_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1}};
-AttributeSet ldr_attributes[] = { {"ON_THRESHOLD",OnThreshold},{"OFF_THRESHOLD",OffThreshold}};
+AttributeSet ldr_attributes[] = { {"ON_THRESHOLD",OnThreshold},{"OFF_THRESHOLD",OffThreshold},{"DEBUG",Debug}};
 
 enum BoilerState { boiler_is_off,boiler_is_on};
 enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
@@ -35,9 +35,9 @@ enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
 
 #define WATCHDOG_INTERVAL 300
 
-bool DEBUG_ON=true;
+bool DEBUG_ON=false;
 
-bool quiet = false;
+
 unsigned long epoch;
 unsigned long time_now;
 unsigned long since_epoch;
@@ -98,7 +98,9 @@ void tick_influx(String text,unsigned int min, unsigned int max,unsigned int cur
 void setup(void){
   char text[100];
   Serial.begin(9600);
-  Serial.println("I'm alive");
+  Serial.println("\nI'm alive");
+  Serial.flush();
+ 
   
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
@@ -108,14 +110,13 @@ void setup(void){
   }
   
   String address = WiFi.localIP().toString();
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println("cottage");
-  Serial.print("IP address: ");
+  Serial.println(""); 
+  Serial.println("Built on " + String(compile_date)+ "\n");
+  Serial.print("Connected to cottage : IP Address ");
   Serial.println(address);
 
 if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.local
-    Serial.println("mDNS responder started");
+    Serial.println("mDNS responder started for host ldr.local");
   } else {
     Serial.println("Error setting up MDNS responder!");
   }
@@ -159,13 +160,16 @@ if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.lo
 String command(String command)
 {
   command.toUpperCase();
-  StringHandler sh(command.c_str(),sizeof(ldr_commands)/sizeof(char*),ldr_commands,sizeof(ldr_attributes)/sizeof(char*),ldr_attributes);
-  
-  sh.tokenise();
+  StringHandler sh(command.c_str(),sizeof(ldr_commands)/sizeof(CommandSet),ldr_commands,sizeof(ldr_attributes)/sizeof(AttributeSet),ldr_attributes);
+  int toks;
+  toks = sh.tokenise();
 
   if ( sh.validate() == false )
-    return String("invalid command");
-
+  {
+    Serial.println("Invalid command with " + String(toks) + "tokens  : " + command);
+    return String("Invalid command ") + command;
+  }
+ 
   String answer;
   switch ( sh.get_command() )
   {
@@ -178,6 +182,9 @@ String command(String command)
           break;
           case OffThreshold:
             answer = "Off Threshold : " + String(thresholds.off_thresh);
+          break;
+           case Debug:
+            answer = "DEBUG_ON : " + String(DEBUG_ON);
           break;
           default:
             answer = "Unknown attribute " + String(sh.get_token(2));
@@ -200,13 +207,32 @@ String command(String command)
               EEPROM.put(0,thresholds);
               EEPROM.commit();
             break;
+            case Debug:
+              if ( value == 0 )
+                DEBUG_ON = false;
+              else
+                DEBUG_ON = true;
+            break;
             default:
               answer = "Unknown attribute " + String(sh.get_token(2));
             break;
           }
     break;
     case Status:
-      answer = "On Threshold : " + String(thresholds.on_thresh);
+  
+      if ( boiler_status == boiler_is_on)
+      {
+        int boiler_on_for;
+        boiler_on_for = (millis()/1000) - boiler_switched_on_time;
+        answer = "Boiler has been ON for " + String(boiler_on_for) + " seconds, Current level " + String(current_level) + " , ";
+      }
+      else
+      {
+        answer = "Boiler is OFF ,  Current level " + String(current_level) + " , ";
+        
+      }
+      
+      answer = answer + " On Threshold : " + String(thresholds.on_thresh);
       answer = answer + "  ,  Off Threshold : " + String(thresholds.off_thresh);
     break;
     case Help:
