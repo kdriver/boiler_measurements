@@ -53,7 +53,7 @@ loggit.init();
         loggit.send("failed to start mDNS responder\n");
   }
     else{}
-      Serial.println("mDNS dallas.local responder started");
+      Serial.println("mDNS dallas.local responder started OK");
       loggit.send("mDNS dallas.local started OK\n");
       
 }
