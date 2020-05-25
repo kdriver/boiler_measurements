@@ -20,6 +20,7 @@ UDPLogger::UDPLogger(const char *ip,unsigned short int port)
     strcpy(remote,ip);
     dest_port = port;
 }
+
 void UDPLogger::init(void)
 {
     Udp.begin(8787);

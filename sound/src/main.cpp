@@ -80,8 +80,8 @@ void handleRoot();              // function prototypes for HTTP handlers
 void handleTest();
 void handleNotFound();
 
-
-UDPLogger loggit("piaware.local",8787);
+IPAddress logging_server;
+UDPLogger *loggit;
 
 
 int post_it(String payload ,String db)
@@ -89,13 +89,15 @@ int post_it(String payload ,String db)
     HTTPClient http;
     int response;
     //Serial.println("post to influx\n");
-    http.begin(String("http://piaware.local:8086/write?db=")+db);
+    String target;
+    target= "http://" + logging_server.toString() + ":8086/write?db="+db;
+    http.begin(target);
     http.addHeader("Content-Type","text/plain");
     response = http.POST(payload);
 
-    loggit.send(db + " " + payload + "\n");
+    loggit->send(db + " " + payload + "\n");
     if ( response > 250 )
-      loggit.send("InfluxDb POST error response " + String(response) + "\n");
+      loggit->send("InfluxDb POST error response " + String(response) + "\n");
 
     http.end();
     return response;
@@ -192,6 +194,7 @@ if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
   }
 
 Serial.println("I'm alive");
+Serial.println("Built on : " + String(compile_date));
 display.clearDisplay();
 p_lcd("Searching for WiFi",0,0);
  
@@ -218,8 +221,6 @@ p_lcd("Searching for WiFi",0,0);
   Serial.print("IP address: ");
   Serial.println(address);
 
-  loggit.init();
-
     // Set up mDNS responder:
     // - first argument is the domain name, in this example
     //   the fully-qualified domain name is "esp8266.local"
@@ -227,7 +228,6 @@ p_lcd("Searching for WiFi",0,0);
     //   we send our IP address on the WiFi network
     if (!MDNS.begin("boiler")) {
         Serial.println("Error setting up MDNS responder!");
-        loggit.send("failed to start mDNS responder");
     }
     else
       Serial.println("mDNS responder started");
@@ -238,9 +238,15 @@ p_lcd("Searching for WiFi",0,0);
     // Add service to MDNS-SD
     MDNS.addService("http", "tcp", 80);
 
+    
+    logging_server = MDNS.queryHost("piaware");
+    Serial.println(logging_server.toString());
+    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)8787);
+    loggit->init();
+
     bool ans;
     ans = NVS.begin("boiler");
-    loggit.send("Initialised NVS access result " + String(ans?" OK \n": " Failed\n"));
+    loggit->send("Initialised NVS access result " + String(ans?" OK \n": " Failed\n"));
     if (NVS.getInt("b_on_thresh1") == 0  )
     {
       
@@ -249,10 +255,10 @@ p_lcd("Searching for WiFi",0,0);
       NVS.setInt("sample_average",(uint32_t)30);
       NVS.setInt("b_on_thresh",(uint32_t)120);
       ans = NVS.setInt("b_on_thresh1",(uint32_t)1800,true);
-      loggit.send("initialise NVRAM values " + String(ans?"True":"False") + "\n");
+      loggit->send("initialise NVRAM values " + String(ans?"True":"False") + "\n");
     }
     else
-      loggit.send("read parameters from NVRAM\n");
+      loggit->send("read parameters from NVRAM\n");
 
       boiler_on_threshold = NVS.getInt("b_on_thresh");
       loop_delay = NVS.getInt("loop_delay");
@@ -261,11 +267,11 @@ p_lcd("Searching for WiFi",0,0);
       pp_history->update_ma_period(sample_average);
       boiler_on_threshold_1 = NVS.getInt("b_on_thresh1");
 
-  loggit.send(" boiler on threshold1 set to " + String(boiler_on_threshold_1) );
-  loggit.send("\n boiler on (unused)   set to " + String(boiler_on_threshold) );
-  loggit.send("\n sample Average       set to " + String(sample_average) );
-  loggit.send("\n loop_delay           set to " + String(loop_delay) );
-  loggit.send("\n sample_period        set to " + String(sample_period) + "\n" );
+  loggit->send(" boiler on threshold1 set to " + String(boiler_on_threshold_1) );
+  loggit->send("\n boiler on (unused)   set to " + String(boiler_on_threshold) );
+  loggit->send("\n sample Average       set to " + String(sample_average) );
+  loggit->send("\n loop_delay           set to " + String(loop_delay) );
+  loggit->send("\n sample_period        set to " + String(sample_period) + "\n" );
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     sprintf(web_page,index_html,pp_history->moving_average(sample_average),boiler_status==0?"OFF":"ON",boiler_on_threshold,loop_delay,sample_period,sample_average,boiler_on_threshold_1,(sample_average*loop_delay/1000.0));
@@ -330,7 +336,7 @@ p_lcd("Searching for WiFi",0,0);
       inputParam = PARAM_INPUT_5;
       boiler_on_threshold_1 = inputMessage.toInt();
       ans = NVS.setInt("b_on_thresh1",boiler_on_threshold_1,true);
-      loggit.send("set boiler threshold 1 to " + String(boiler_on_threshold_1) + " result " + String(ans?"OK\n":"Failed\n"));
+      loggit->send("set boiler threshold 1 to " + String(boiler_on_threshold_1) + " result " + String(ans?"OK\n":"Failed\n"));
     }
     Serial.println(inputMessage);
     request->send(200, "text/html", "HTTP GET request sent to your ESP on input field (" 
@@ -341,8 +347,10 @@ p_lcd("Searching for WiFi",0,0);
   server.begin();  
   int udp = control.begin(8787);
   Serial.println("start UDP server on port 8787 " + String(udp));
+  
 
-  loggit.send("up and running\n");
+
+  loggit->send("up and running\n");
  
   // sgart a timer to count the number of events each second.
 /* 8266
@@ -422,7 +430,7 @@ unsigned int choose_scale(unsigned int max)
     if ( threshold > 31 ) // Clamp threshold at top of screen . Will happen at low scale values
       threshold = 31;
     display.drawFastHLine(127-50,31-threshold,10,SSD1306_WHITE);
-    loggit.send(s + String(" scale=") + String(scale) + '\n');
+    loggit->send(s + String(" scale=") + String(scale) + '\n');
     display.display();
 }
 */
@@ -600,6 +608,11 @@ bool boiler_on = false;
         
         if ( (time_now - last_time)  >  2000 )
         {
+          if (WiFi.status() == WL_CONNECTED)
+            p_lcd("WiFi OK",72,0);
+          else
+            p_lcd("No WiFi",72,0);
+
           p_lcd(address + " " + String(time_now/1000),0,8);
           if ( boiler_status == true )
           {
@@ -624,7 +637,7 @@ bool boiler_on = false;
           //Serial.print("input pin is " + String(value )+ "\n" );
           //s="events " + String(history->last()) + "\n";
           //Serial.println(s);
-          //loggit.send(s);
+          //loggit->send(s);
         }
 
 
@@ -632,7 +645,7 @@ bool boiler_on = false;
         {
             String text;
             text = String("Boiler switched ON \n ") ;
-            loggit.send(text);
+            loggit->send(text);
             tell_influx(BOILER_ON,0);
             boiler_status = BOILER_ON;
             boiler_switched_on_time = time_now;
@@ -650,7 +663,7 @@ bool boiler_on = false;
             }
             boiler_status = BOILER_OFF;
             sprintf(output,"boiler was on for %d seconds \n",interval);
-            loggit.send(output);
+            loggit->send(output);
         }
 
 
