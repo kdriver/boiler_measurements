@@ -12,7 +12,22 @@
 #include <Webtext.h>
 #include <ESPmDNS.h>
 #include <ArduinoNvs.h>
-#include <ESP_EEPROM.h>
+
+enum Command  { Get,Set,Help,Status};
+enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,Debug };
+
+#include <StringHandler.h>
+CommandSet sound_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1}};
+AttributeSet sound_attributes[] = {
+     {"ON_THRESHOLD",OnThreshold},
+     {"LOOP_DELAY",LoopDelay},
+     {"SAMPLE_PERIOD",SamplePeriod},
+     {"SAMPLES_FOR_AVERAGE",SamplesForAverage},
+     {"DEBUG",Debug}
+     };
+
+const char compile_date[] = __DATE__ " " __TIME__;
+WiFiUDP  control;
 
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -324,6 +339,9 @@ p_lcd("Searching for WiFi",0,0);
   });
   server.onNotFound(notFound);
   server.begin();  
+  int udp = control.begin(8787);
+  Serial.println("start UDP server on port 8787 " + String(udp));
+
   loggit.send("up and running\n");
  
   // sgart a timer to count the number of events each second.
@@ -428,10 +446,151 @@ bool read_analogue()
       
     return  detected_on ;
 }
+String command(String command)
+{
+  command.toUpperCase();
+  StringHandler sh(command.c_str(),sizeof(sound_commands)/sizeof(CommandSet),sound_commands,sizeof(sound_attributes)/sizeof(AttributeSet),sound_attributes);
+  int toks;
+  toks = sh.tokenise();
 
+  if ( sh.validate() == false )
+  {
+    Serial.println("Invalid command with " + String(toks) + "tokens  : " + command);
+    return String("Invalid command ") + command;
+  }
+ 
+  String answer;
+  switch ( sh.get_command() )
+  {
+   
+    case Get:
+      {
+        switch(sh.get_attribute())
+        {
+          case OnThreshold:
+            answer = "On Threshold : " + String(boiler_on_threshold_1);
+          break;
+          case LoopDelay:
+            answer = "Loop Delay : " + String(loop_delay);
+          break;
+          case SamplesForAverage:
+            answer = "Samples to average: " + String(sample_average);
+          break;          
+          case SamplePeriod:
+            answer = "Sample period (ms) : " + String(sample_period);
+          break;
+           case Debug:
+            answer = "DEBUG_ON : " + String(DEBUG_ON);
+          break;
+          default:
+            answer = "Unknown attribute " + String(sh.get_token(2));
+          break;
+        }
+      }
+    break;
+    case Set:
+    unsigned int value ;
+      value = sh.get_value();
+      switch(sh.get_attribute())
+          {
+            case OnThreshold:
+              boiler_on_threshold_1 = value;
+              NVS.setInt("b_on_thresh1",(uint32_t)boiler_on_threshold_1,true);
+            break;
+            case LoopDelay:
+              loop_delay = value;
+              NVS.setInt("loop_delay",(uint32_t)loop_delay,true);
+            break;
+            case SamplesForAverage:
+              sample_average = value;
+              NVS.setInt("sample_average",(uint32_t)sample_average,true);
+            break;
+            case SamplePeriod:
+              sample_period = value;
+              NVS.setInt("sample_period",(uint32_t)sample_period,true);
+            break;      
+            case Debug:
+              if ( value == 0 )
+                DEBUG_ON = false;
+              else
+                DEBUG_ON = true;
+            break;
+            default:
+              answer = "Unknown attribute " + String(sh.get_token(2));
+            break;
+          }
+    break;
+    case Status:
+    {
+      int ma = pp_history->moving_average(sample_average);
+      if ( boiler_status == BOILER_ON)
+      {
+        int boiler_on_for;
+        boiler_on_for = (millis()/1000) - boiler_switched_on_time;
+        answer = "Boiler has been ON for " + String(boiler_on_for) + " seconds, Current ave " + String(ma) + " , ";
+      }
+      else
+      {
+        answer = "Boiler is OFF ,  Current ave " + String(ma) ;
+        
+      }
+      
+      answer = answer + "\nOn Threshold    : " + String(boiler_on_threshold_1);
+      answer = answer + "\nSample Period   : " + String(sample_period);
+      answer = answer + "\nSamples for Ave : " + String(sample_average);
+      answer = answer + "\nLoop Delay      : " + String(loop_delay);
+      answer = answer + "\nDebug           : " + String(DEBUG_ON)+ "\n";
+    }
+    break;
+    case Help:
+      answer = "Commands ( ";
+      for ( unsigned int i = 0 ; i < sizeof(sound_commands)/sizeof(CommandSet); i++ )
+      {
+        if ( i )
+          answer = answer + " | " + sound_commands[i].cmd ;
+        else
+          answer = answer + sound_commands[i].cmd ;
+      }
+      answer = answer + " ) , Attributes ( ";
+      for ( unsigned int i = 0 ; i < sizeof(sound_attributes)/sizeof(AttributeSet); i++ )
+      {
+        if ( i )
+          answer = answer + " | " + sound_attributes[i].attr ;
+        else
+          answer = answer + sound_attributes[i].attr  ;
+      }
+      answer = answer + " ) \n";
+        
+    break;
+  }
+  return answer;
+  
+   
+}
+void handleUDPPackets(void) {
+  char packet[500];
+  int cb = control.parsePacket();
+  String text;
+  if (cb) {
+    int length;
+    length  = control.read(packet, sizeof(packet));
+    String myData = "";
+    for(int i = 0; i < length; i++) {
+      myData += (char)packet[i];
+    }
+    Serial.println(myData);
+    text = command(myData);
+    IPAddress target = control.remoteIP();
+    control.beginPacket(target,control.remotePort());
+    String answer = "boiler ldr > " + text + "\n";
+    control.print(answer);
+    control.endPacket();
+
+  }
+}
 void loop() {
 bool boiler_on = false;
-
+        handleUDPPackets();
         delay(loop_delay);
         display.clearDisplay();
         String s;
