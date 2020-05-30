@@ -13,11 +13,11 @@
 #include <ESPmDNS.h>
 #include <ArduinoNvs.h>
 
-enum Command  { Get,Set,Help,Status};
+enum Command  { Get,Set,Help,Status,Reset};
 enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,Debug };
 
 #include <StringHandler.h>
-CommandSet sound_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1}};
+CommandSet sound_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
 AttributeSet sound_attributes[] = {
      {"ON_THRESHOLD",OnThreshold},
      {"LOOP_DELAY",LoopDelay},
@@ -68,6 +68,8 @@ String address = "0.0.0.0";
 
 bool DEBUG_ON=false;
 bool quiet = false;
+bool reset = false;
+unsigned int reset_count = 3;
 
 unsigned int loop_delay = 50;
 unsigned int sample_period = 50;
@@ -104,7 +106,7 @@ int post_it(String payload ,String db)
 }
 void tell_influx(unsigned int status, unsigned int time_interval)
 {
-  String payload;
+  String payload; 
   //int response;
 
   payload = "boiler_status interval=" + String(time_interval);
@@ -241,7 +243,7 @@ p_lcd("Searching for WiFi",0,0);
     
     logging_server = MDNS.queryHost("piaware");
     Serial.println(logging_server.toString());
-    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)8787);
+    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)8788);
     loggit->init();
 
     bool ans;
@@ -528,6 +530,11 @@ String command(String command)
             break;
           }
     break;
+    case Reset:
+      reset = true;
+      Serial.println("Reset requested");
+      loggit->send("Reset requested");
+    break;
     case Status:
     {
       int ma = pp_history->moving_average(sample_average);
@@ -638,6 +645,14 @@ bool boiler_on = false;
           //s="events " + String(history->last()) + "\n";
           //Serial.println(s);
           //loggit->send(s);
+          if ( reset == true )
+          {
+              reset_count = reset_count - 1;
+              Serial.println("Counting down to reset " + String(reset_count));
+              if ( reset_count == 0 )
+                ESP.restart();
+          }
+
         }
 
 
@@ -665,6 +680,5 @@ bool boiler_on = false;
             sprintf(output,"boiler was on for %d seconds \n",interval);
             loggit->send(output);
         }
-
 
 }      

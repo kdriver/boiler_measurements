@@ -1,13 +1,19 @@
 #include <Arduino.h>
-
 #include <wifi_password.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <ESP_EEPROM.h>
-enum Command  { Get,Set,Help,Status};
+// these two lines need to be before include StringHandler
+enum Command  { Get,Set,Help,Status,Reset};
 enum Attribute { OnThreshold,OffThreshold,Debug };
+
 #include <StringHandler.h>
+#include <UDPLogger.h>
+//#include <esp_log.h>
+
+IPAddress logging_server;
+UDPLogger *loggit;
 
 const char compile_date[] = __DATE__ " " __TIME__;
 WiFiUDP  control;
@@ -22,9 +28,7 @@ void handleNotFound();
 #define INFLUXDB_PORT "1337"
 #define INFLUXDB_DATABASE "boiler_measurements"
 
-
-
-CommandSet ldr_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1}};
+CommandSet ldr_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
 AttributeSet ldr_attributes[] = { {"ON_THRESHOLD",OnThreshold},{"OFF_THRESHOLD",OffThreshold},{"DEBUG",Debug}};
 
 enum BoilerState { boiler_is_off,boiler_is_on};
@@ -36,8 +40,8 @@ enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
 #define WATCHDOG_INTERVAL 300
 
 bool DEBUG_ON=false;
-
-
+bool reset = false;
+unsigned int  reset_count = 10;
 unsigned long epoch;
 unsigned long time_now;
 unsigned long since_epoch;
@@ -100,14 +104,19 @@ void setup(void){
   Serial.begin(9600);
   Serial.println("\nI'm alive");
   Serial.flush();
- 
+
   
+   
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
     Serial.print(".");
   }
+  //logging_server = MDNS.queryHost("piaware");
+  //Serial.println(logging_server.toString());
+  loggit = new UDPLogger("piaware.local",(unsigned short int)8787);
+  loggit->init();
   
   String address = WiFi.localIP().toString();
   Serial.println(""); 
@@ -152,10 +161,10 @@ if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.lo
   for ( int i = 0 ; i < HISTORY_SIZE ; i++ )
     history[i] = 2000;    // 200 is an invalid value from the analogueread
 
-  int udp = control.begin(8787);
-  Serial.println("start UDP server on port 8787 " + String(udp)); 
+  int udp = control.begin(8788);
+  Serial.println("start UDP server on port 8788 " + String(udp)); 
 
-
+  tick_influx("alive",min_level,max_level,current_level);
 }
 String command(String command)
 {
@@ -163,6 +172,9 @@ String command(String command)
   StringHandler sh(command.c_str(),sizeof(ldr_commands)/sizeof(CommandSet),ldr_commands,sizeof(ldr_attributes)/sizeof(AttributeSet),ldr_attributes);
   int toks;
   toks = sh.tokenise();
+
+  if ( toks == 0 )
+    return String("no command");
 
   if ( sh.validate() == false )
   {
@@ -218,13 +230,18 @@ String command(String command)
             break;
           }
     break;
+    case Reset:
+        answer = "Resetting in 5 seconds ";
+        reset = true;
+        reset_count = 10;
+    break;
     case Status:
   
       if ( boiler_status == boiler_is_on)
       {
         int boiler_on_for;
         boiler_on_for = (millis()/1000) - boiler_switched_on_time;
-        answer = "Boiler has been ON for " + String(boiler_on_for) + " seconds, Current level " + String(current_level) + " , ";
+        answer = "Boiler has been ON for " + String(boiler_on_for) + " seconds\nCurrent level " + String(current_level) + "\n";
       }
       else
       {
@@ -232,8 +249,9 @@ String command(String command)
         
       }
       
-      answer = answer + " On Threshold : " + String(thresholds.on_thresh);
-      answer = answer + "  ,  Off Threshold : " + String(thresholds.off_thresh);
+      answer = answer + "On Threshold : " + String(thresholds.on_thresh) + "\n";
+      answer = answer + "Off Threshold : " + String(thresholds.off_thresh) + "\n";
+      answer = answer + "Running for " + String(millis()/1000) + " seconds ( " + String(millis()/1000/3600) + " hours ) ";
     break;
     case Help:
     answer = "Commands ( ";
@@ -286,6 +304,16 @@ void loop() {
 
   delay(500);
 
+  if ( reset == true )
+  {
+    reset_count = reset_count - 1;
+    Serial.print("count down to reset ");
+    Serial.println(reset_count);
+    if ( reset_count == 0 )
+    {
+      ESP.reset();
+    }
+  }
   MDNS.update();
 
   handleUDPPackets();
@@ -325,7 +353,8 @@ if ( DEBUG_ON  || !(since_epoch % WATCHDOG_INTERVAL) )
   Serial.print("\t");
   Serial.print("boiler_status \t");
   Serial.println(boiler_status);
-  //tick_influx("alive",min_level,max_level,current_level);
+  tick_influx("status",min_level,max_level,current_level);
+  loggit->send("ldr current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n" );
  }
   boiler = boiler_no_change;
 
@@ -394,6 +423,7 @@ void handleRoot() {
   document = document +  String(current_level,DEC);
   document = document +  "</p><p> Boiler status ";
   document = document + String((boiler_status == boiler_is_on) ? "ON"  : "OFF");
+  document = document + "</p>Up and running for " + String(millis()/1000/3600) + " hours </p>";
   document = document + "</body></</html>";
 
   
