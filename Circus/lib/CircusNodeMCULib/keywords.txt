@@ -1,0 +1,23 @@
+#######################################
+# Syntax Coloring Map For CircusNodeMCULib
+#######################################
+
+#######################################
+# Class (KEYWORD1)
+#######################################
+
+CircusNodeMCULib	KEYWORD1	CircusNodeMCULib
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+# CircusNodeMCULib Class
+getCertificate	KEYWORD2
+read		KEYWORD2
+write		KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+

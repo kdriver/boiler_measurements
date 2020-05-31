@@ -125,12 +125,12 @@ void diag_influx(unsigned int sound, unsigned int boiler_status)
   post_it(payload,"boiler_measurements");
 }
 
-void tick_influx(String text,unsigned int value)
+void tick_influx(String text,String value)
 {
     String payload;
     //int response;
-    payload = "boiler_iot,lifecycle=" + text + " value=" + String(value);
-    post_it(payload,"boiler_sound");
+    payload = "esp32_sound,text=" + text + " address=" + String(value);
+    post_it(payload,"ticks");
     //Serial.print(response); 
 }
 
@@ -373,7 +373,7 @@ p_lcd("Searching for WiFi",0,0);
   
   p_lcd("start influx",0,0);
 
-  tick_influx(String("Initialised_1_0_"+ address),0);
+  tick_influx(String("initialised"), address);
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   epoch = millis();

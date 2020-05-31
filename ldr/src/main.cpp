@@ -37,7 +37,9 @@ enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
 #define ON_THRESHOLD 400
 #define OFF_THRESHOLD 300
 
-#define WATCHDOG_INTERVAL 300
+// 5 minutes
+#define TICK_INTERVAL_MS (1000*60*5)
+unsigned long ms_since_last_tick = 0;
 
 bool DEBUG_ON=false;
 bool reset = false;
@@ -61,13 +63,12 @@ struct Persistent {
 } thresholds;
 
 Influxdb influx(INFLUXDB_HOST);
+Influxdb influx_tick(INFLUXDB_HOST);
 
 unsigned int smooth_on = 0;
 unsigned int smooth_off = 0;
 
-#define HISTORY_SIZE 300
-unsigned short int history[HISTORY_SIZE];
-unsigned int history_entry=0; 
+ 
 
 void tell_influx(BoilerState status, unsigned int time_interval)
 {
@@ -87,16 +88,13 @@ void tell_influx(BoilerState status, unsigned int time_interval)
   
 }
 
-void tick_influx(String text,unsigned int min, unsigned int max,unsigned int current)
+void tick_influx(String text,String info)
 {
   InfluxData measurement("tick_ldr");
-  measurement.addTag("lifecycle",text);
-  measurement.addValue("min_reading",min);
-  measurement.addValue("max_reading",max);
-  measurement.addValue("current",current);
-  measurement.addValue("value",1);
-  measurement.addValue("uptime_hours",millis()/1000/60/60);
-  influx.write(measurement);
+  measurement.addTag("text",text);
+  measurement.addTag("info",info);
+  measurement.addValue("value",1.0);
+  influx_tick.write(measurement);
 }
 
 void setup(void){
@@ -131,6 +129,7 @@ if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.lo
   }
 
   influx.setDb(INFLUXDB_DATABASE);
+  influx_tick.setDb("ticks");
   epoch = millis()/1000;
   server.on("/", handleRoot);               // Call the 'handleRoot' function when a client requests URI "/"
   server.onNotFound(handleNotFound);        // When a client requests an unknown URI (i.e. something other than "/"), call function "handleNotFound"
@@ -156,15 +155,11 @@ if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.lo
   Serial.print(text);
 
   // Tell the database we are starting up
-//  tick_influx(String("Initialised_1_0_"+ address),0,1000,0);
-
-  for ( int i = 0 ; i < HISTORY_SIZE ; i++ )
-    history[i] = 2000;    // 200 is an invalid value from the analogueread
+  tick_influx(String("ldr"), address);
 
   int udp = control.begin(8788);
   Serial.println("start UDP server on port 8788 " + String(udp)); 
 
-  tick_influx("alive",min_level,max_level,current_level);
 }
 String command(String command)
 {
@@ -302,6 +297,8 @@ void handleUDPPackets(void) {
 
 void loop() {
 
+  unsigned long int current_ts;
+
   delay(500);
 
   if ( reset == true )
@@ -324,27 +321,18 @@ void loop() {
 
   current_level = a0pin;
 
-  history[history_entry] = current_level;
-
-  history_entry = history_entry + 1;
-
-  if ( history_entry >= HISTORY_SIZE )
-  {
-    history_entry = 0;
-  }
-
   if ( a0pin > max_level )
     max_level = a0pin;
   if ( a0pin < min_level )
     min_level = a0pin;
 
-  since_epoch = (millis()/1000) - epoch;
+   current_ts = millis();
 
-if ( DEBUG_ON  || !(since_epoch % WATCHDOG_INTERVAL) )
+if ( DEBUG_ON  || ((current_ts - ms_since_last_tick)>TICK_INTERVAL_MS))
  {
   float voltage;
   voltage = a0pin * 3.3/1024.0;
-  since_epoch = millis() - epoch;
+  ms_since_last_tick = 0;
   Serial.print(since_epoch);
   Serial.print("\t");
   Serial.print(a0pin);
@@ -353,7 +341,7 @@ if ( DEBUG_ON  || !(since_epoch % WATCHDOG_INTERVAL) )
   Serial.print("\t");
   Serial.print("boiler_status \t");
   Serial.println(boiler_status);
-  tick_influx("status",min_level,max_level,current_level);
+  tick_influx("ldr_status",String(current_level));
   loggit->send("ldr current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n" );
  }
   boiler = boiler_no_change;
