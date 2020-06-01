@@ -95,6 +95,8 @@ int post_it(String payload ,String db)
     target= "http://" + logging_server.toString() + ":8086/write?db="+db;
     http.begin(target);
     http.addHeader("Content-Type","text/plain");
+    Serial.print(target + " : ");
+    Serial.println(payload);
     response = http.POST(payload);
 
     loggit->send(db + " " + payload + "\n");
@@ -125,11 +127,11 @@ void diag_influx(unsigned int sound, unsigned int boiler_status)
   post_it(payload,"boiler_measurements");
 }
 
-void tick_influx(String text,String value)
+void tick_influx(String text,String nowt,float value)
 {
     String payload;
     //int response;
-    payload = "esp32_sound,text=" + text + " address=" + String(value);
+    payload = "esp32_sound text=" + text + " value=" + String(value);
     post_it(payload,"ticks");
     //Serial.print(response); 
 }
@@ -373,7 +375,7 @@ p_lcd("Searching for WiFi",0,0);
   
   p_lcd("start influx",0,0);
 
-  tick_influx(String("initialised"), address);
+  tick_influx(String("initialised"), address,1.0);
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   epoch = millis();
