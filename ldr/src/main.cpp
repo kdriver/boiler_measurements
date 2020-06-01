@@ -12,6 +12,8 @@ enum Attribute { OnThreshold,OffThreshold,Debug };
 #include <UDPLogger.h>
 //#include <esp_log.h>
 
+#define MDNS_NAME "ldr"
+
 IPAddress logging_server;
 UDPLogger *loggit;
 
@@ -88,12 +90,12 @@ void tell_influx(BoilerState status, unsigned int time_interval)
   
 }
 
-void tick_influx(String text,String info)
+void tick_influx(String tag1,String tag2,float value)
 {
   InfluxData measurement("tick_ldr");
-  measurement.addTag("text",text);
-  measurement.addTag("info",info);
-  measurement.addValue("value",1.0);
+  measurement.addTag("text",tag1);
+  measurement.addTag("info",tag2);
+  measurement.addValue("value",value);
   influx_tick.write(measurement);
 }
 
@@ -122,7 +124,7 @@ void setup(void){
   Serial.print("Connected to cottage : IP Address ");
   Serial.println(address);
 
-if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.local
+if (MDNS.begin(MDNS_NAME)) {              // Start the mDNS responder for esp8266.local
     Serial.println("mDNS responder started for host ldr.local");
   } else {
     Serial.println("Error setting up MDNS responder!");
@@ -155,7 +157,7 @@ if (MDNS.begin("ldr")) {              // Start the mDNS responder for esp8266.lo
   Serial.print(text);
 
   // Tell the database we are starting up
-  tick_influx(String("ldr"), address);
+  tick_influx(String("started"), address,1.0);
 
   int udp = control.begin(8788);
   Serial.println("start UDP server on port 8788 " + String(udp)); 
@@ -341,7 +343,7 @@ if ( DEBUG_ON  || ((current_ts - ms_since_last_tick)>TICK_INTERVAL_MS))
   Serial.print("\t");
   Serial.print("boiler_status \t");
   Serial.println(boiler_status);
-  tick_influx("ldr_status",String(current_level));
+  tick_influx("ldr","status",(float)current_level);
   loggit->send("ldr current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n" );
  }
   boiler = boiler_no_change;
