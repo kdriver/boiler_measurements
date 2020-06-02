@@ -13,6 +13,16 @@
 #include <ESPmDNS.h>
 #include <ArduinoNvs.h>
 
+#define MDNS_NAME "boiler"
+
+#define DEVICE "ESP32"
+#include <InfluxDbClient.h>
+InfluxDBClient *tick_client,*data_client;
+
+Point tick("sound_tick");
+Point diag("boiler_sound");
+Point boiler_s("boiler_status");
+
 enum Command  { Get,Set,Help,Status,Reset};
 enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,Debug };
 
@@ -85,7 +95,7 @@ void handleNotFound();
 IPAddress logging_server;
 UDPLogger *loggit;
 
-
+#ifdef REDUNDENT
 int post_it(String payload ,String db)
 {
     HTTPClient http;
@@ -95,8 +105,8 @@ int post_it(String payload ,String db)
     target= "http://" + logging_server.toString() + ":8086/write?db="+db;
     http.begin(target);
     http.addHeader("Content-Type","text/plain");
-    Serial.print(target + " : ");
-    Serial.println(payload);
+    //Serial.print(target + " : ");
+    //Serial.println(payload);
     response = http.POST(payload);
 
     loggit->send(db + " " + payload + "\n");
@@ -106,27 +116,41 @@ int post_it(String payload ,String db)
     http.end();
     return response;
 }
-void tell_influx(unsigned int status, unsigned int time_interval)
+#endif
+void tell_influx(Point &p,unsigned int status, unsigned int time_interval)
 {
   String payload; 
   //int response;
+  p.clearFields();
+  p.addField("interval",String(time_interval).c_str());
+  p.addField("interval_mins",String(time_interval/60).c_str());
+  p.addField("interval",String(time_interval%60).c_str());
+  p.addField("bolier_on",String(status));
 
-  payload = "boiler_status interval=" + String(time_interval);
-  payload = payload + ",interval_mins=" + String(time_interval/60);
-  payload = payload + ",interval_secs=" + String(time_interval%60);
-  payload = payload + ",boiler_on=" + String(status);
-  post_it(payload,"boiler_measurements");
+  data_client->writePoint(p);
+
+  //payload = "boiler_status interval=" + String(time_interval);
+  //payload = payload + ",interval_mins=" + String(time_interval/60);
+  //payload = payload + ",interval_secs=" + String(time_interval%60);
+  //payload = payload + ",boiler_on=" + String(status);
+  //post_it(payload,"boiler_measurements");
   //Serial.print(response);
   
 }
-void diag_influx(unsigned int sound, unsigned int boiler_status)
+void diag_influx(Point &p, unsigned int sound, unsigned int boiler_status)
 {
-  String payload;
-  payload = "boiler_sound value=" + String(sound);
-  payload = payload + ",boiler_on=" + String(boiler_status==BOILER_ON?1:0);
-  post_it(payload,"boiler_measurements");
+  p.clearFields();
+  p.addField("value",String(sound));
+  p.addField("boiler_on",String(boiler_status==BOILER_ON?1:0));
+  data_client->writePoint(p);
+  
+  //String payload;
+  //payload = "boiler_sound value=" + String(sound);
+  //payload = payload + ",boiler_on=" + String(boiler_status==BOILER_ON?1:0);
+  //post_it(payload,"boiler_measurements");
 }
 
+#ifdef REDUNDENT
 void tick_influx(String text,String nowt,float value)
 {
     String payload;
@@ -135,7 +159,7 @@ void tick_influx(String text,String nowt,float value)
     post_it(payload,"ticks");
     //Serial.print(response); 
 }
-
+#endif
 hw_timer_t *timer=NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 //History *history = new History(300);
@@ -230,7 +254,7 @@ p_lcd("Searching for WiFi",0,0);
     //   the fully-qualified domain name is "esp8266.local"
     // - second argument is the IP address to advertise
     //   we send our IP address on the WiFi network
-    if (!MDNS.begin("boiler")) {
+    if (!MDNS.begin(MDNS_NAME)) {
         Serial.println("Error setting up MDNS responder!");
     }
     else
@@ -349,33 +373,35 @@ p_lcd("Searching for WiFi",0,0);
   });
   server.onNotFound(notFound);
   server.begin();  
-  int udp = control.begin(8787);
-  Serial.println("start UDP server on port 8787 " + String(udp));
+  int udp = control.begin(8788);
+  Serial.println("start UDP server on port 8788 " + String(udp));
   
-
-
   loggit->send("up and running\n");
  
-  // sgart a timer to count the number of events each second.
-/* 8266
-  timer1_attachInterrupt(measure);
-  timer1_enable(TIM_DIV256, TIM_EDGE, TIM_LOOP); // 
-  timer1_write(312000*2); // 1 second
+  String influx_url;
+  influx_url = "http://" + logging_server.toString() + ":8086";
+  tick_client = new InfluxDBClient(influx_url.c_str(),"ticks");
+  data_client = new InfluxDBClient(influx_url.c_str(),"boiler_measurements");
 
-  pinMode(D2, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(D2),sound,FALLING);
-
-*/
-/*
-  timer = timerBegin(0,80,true);
-  timerAttachInterrupt(timer, &measure, true);
-  timerAlarmWrite(timer, 1000000, true);
-  timerAlarmEnable(timer);
-*/
   
+  tick.addTag("device", DEVICE);
+  tick.addTag("SSID", WiFi.SSID());
+  tick.addTag("IP", WiFi.localIP().toString());
   p_lcd("start influx",0,0);
-
-  tick_influx(String("initialised"), address,1.0);
+  Serial.print(influx_url);
+   
+  tick.clearFields();
+  // Report RSSI of currently connected network
+  tick.addField("rssi", WiFi.RSSI());
+   if (!tick_client->writePoint(tick)) {
+    Serial.print("InfluxDB write failed: ");
+    Serial.println(tick_client->getLastErrorMessage());
+  }
+  else
+  {
+    Serial.println("wrote influx datapoint ok");
+  }
+  //tick_influx(String("initialised"), address,1.0);
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   epoch = millis();
@@ -403,41 +429,6 @@ unsigned int choose_scale(unsigned int max)
     scale = 100;
        return scale;
 }
-
-/*void drawHistory()
-{
-    unsigned int h[51];
-    unsigned int events;
-    unsigned int max=0;
-    unsigned int scale=0;
-    String s;
-
-    
-    events = history->getHistory(40,(unsigned int *)&h,&max);
-    
-    scale = choose_scale(max);
-    s = "values :(" + String(events) + ") :";
-    display.writeFillRect(127-40,0,40,31,SSD1306_BLACK);
-    // 32 pixels high
-    for ( int i =0 ; i < events ; i++ )
-    {
-      int v;
-      v = h[i]*32/scale;
-      if ( v > 31 )
-        v = 31;
-       s = s + String(h[i]) + ',';
-       display.drawFastVLine(127-i,31-v,v,SSD1306_WHITE);
-    }
-    //now draw a short line indication of the 'on' threshold 
-    unsigned int threshold;
-    threshold = (ON_THRESHOLD*32)/scale;
-    if ( threshold > 31 ) // Clamp threshold at top of screen . Will happen at low scale values
-      threshold = 31;
-    display.drawFastHLine(127-50,31-threshold,10,SSD1306_WHITE);
-    loggit->send(s + String(" scale=") + String(scale) + '\n');
-    display.display();
-}
-*/
 
 
 bool read_analogue()
@@ -636,17 +627,10 @@ bool boiler_on = false;
            p_lcd("threshold " + String(boiler_on_threshold_1),0,24);
            ma = pp_history->moving_average(sample_average);
           // history->add(abs_average);
-           diag_influx(ma,boiler_status);
+           diag_influx(diag,ma,boiler_status);
           
           last_time = time_now;
-          //adc1_config_width(ADC_WIDTH_BIT_10);
-          //adc1_config_channel_atten(ADC1_CHANNEL_0,ADC_ATTEN_DB_11);
-          //int value = adc1_get_raw(ADC1_CHANNEL_0);
-          //int value = analogRead(GPIO_NUM_36);
-          //Serial.print("input pin is " + String(value )+ "\n" );
-          //s="events " + String(history->last()) + "\n";
-          //Serial.println(s);
-          //loggit->send(s);
+        
           if ( reset == true )
           {
               reset_count = reset_count - 1;
@@ -654,7 +638,6 @@ bool boiler_on = false;
               if ( reset_count == 0 )
                 ESP.restart();
           }
-
         }
 
 
@@ -663,7 +646,7 @@ bool boiler_on = false;
             String text;
             text = String("Boiler switched ON \n ") ;
             loggit->send(text);
-            tell_influx(BOILER_ON,0);
+            tell_influx(boiler_s,BOILER_ON,0);
             boiler_status = BOILER_ON;
             boiler_switched_on_time = time_now;
           
@@ -676,7 +659,7 @@ bool boiler_on = false;
             on_for = interval;
             if ( interval > 5 )
             {
-              tell_influx(BOILER_OFF,interval);
+              tell_influx(boiler_s,BOILER_OFF,interval);
             }
             boiler_status = BOILER_OFF;
             sprintf(output,"boiler was on for %d seconds \n",interval);
