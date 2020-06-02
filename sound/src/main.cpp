@@ -125,7 +125,7 @@ void tell_influx(Point &p,unsigned int status, unsigned int time_interval)
   p.addField("interval",String(time_interval).c_str());
   p.addField("interval_mins",String(time_interval/60).c_str());
   p.addField("interval",String(time_interval%60).c_str());
-  p.addField("bolier_on",String(status));
+  p.addField("bolier_on",(float)status);
 
   data_client->writePoint(p);
 
@@ -140,8 +140,8 @@ void tell_influx(Point &p,unsigned int status, unsigned int time_interval)
 void diag_influx(Point &p, unsigned int sound, unsigned int boiler_status)
 {
   p.clearFields();
-  p.addField("value",String(sound));
-  p.addField("boiler_on",String(boiler_status==BOILER_ON?1:0));
+  p.addField("value",(float)sound);
+  p.addField("boiler_on",(float)(boiler_status==BOILER_ON?1:0));
   data_client->writePoint(p);
   
   //String payload;
