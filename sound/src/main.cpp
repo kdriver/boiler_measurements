@@ -122,9 +122,9 @@ void tell_influx(Point &p,unsigned int status, unsigned int time_interval)
   String payload; 
   //int response;
   p.clearFields();
-  p.addField("interval",String(time_interval).c_str());
-  p.addField("interval_mins",String(time_interval/60).c_str());
-  p.addField("interval",String(time_interval%60).c_str());
+  p.addField("interval",(float)time_interval);
+  p.addField("interval_mins",(float)(time_interval/60));
+  p.addField("interval",(float)(time_interval%60));
   p.addField("bolier_on",(float)status);
 
   data_client->writePoint(p);
