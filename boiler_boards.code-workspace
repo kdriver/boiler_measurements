@@ -17,6 +17,9 @@
 		},
 		{
 			"path": "Circus"
+		},
+		{
+			"path": "temperature2"
 		}
 	]
 }
