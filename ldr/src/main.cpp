@@ -39,8 +39,8 @@ enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
 #define ON_THRESHOLD 400
 #define OFF_THRESHOLD 300
 
-// 5 minutes
-#define TICK_INTERVAL_MS (1000*60*5)
+// 10 seconds
+#define TICK_INTERVAL_MS (1000*10)
 unsigned long last_tick_ts = millis();
 
 bool DEBUG_ON=false;
@@ -98,7 +98,14 @@ void tick_influx(String tag1,String tag2,float value)
   measurement.addValue("value",value);
   influx_tick.write(measurement);
 }
-
+void report_influx(String tag1,String tag2,float value)
+{
+  InfluxData measurement("report_ldr");
+  measurement.addTag("text",tag1);
+  measurement.addTag("info",tag2);
+  measurement.addValue("value",value);
+  influx.write(measurement);
+}
 void setup(void){
   char text[100];
   Serial.begin(9600);
@@ -330,21 +337,11 @@ void loop() {
 
    current_ts = millis();
 
-if ( DEBUG_ON  || ((current_ts - last_tick_ts)>TICK_INTERVAL_MS))
+if ( (current_ts - last_tick_ts)>TICK_INTERVAL_MS)
  {
-  float voltage;
-  voltage = a0pin * 3.3/1024.0;
   last_tick_ts = current_ts;
-  Serial.print(since_epoch);
-  Serial.print("\t");
-  Serial.print(a0pin);
-  Serial.print("\t");
-  Serial.print(voltage);
-  Serial.print("\t");
-  Serial.print("boiler_status \t");
-  Serial.println(boiler_status);
-  tick_influx("ldr","status",(float)current_level);
-  loggit->send("ldr current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n" );
+  report_influx("ldr","level",(float)current_level);
+  //loggit->send("ldr current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n" );
  }
   boiler = boiler_no_change;
 
