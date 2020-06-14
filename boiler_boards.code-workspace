@@ -20,6 +20,14 @@
 		},
 		{
 			"path": "temperature2"
+		},
+		{
+			"path": "serial"
 		}
-	]
+	],
+	"settings": {
+		"files.associations": {
+			"algorithm": "cpp"
+		}
+	}
 }

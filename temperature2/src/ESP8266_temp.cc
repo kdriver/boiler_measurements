@@ -1,10 +1,28 @@
-#include <InfluxDb.h>
-#include <ESP8266WiFi.h> 
+
+//#include <Arduino.h>
+#ifndef ESP32
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#define ONE_WIRE_BUS D2
+
+#else
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#define ONE_WIRE_BUS GPIO_NUM_4
+#define ONE_WIRE_BUS 4
+#define DEVICE "ESP32"
+
+#define Influxdb InfluxDBClient
+#endif 
+
+
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "wifi_password.h"
 #include "UDPLogger.h"
-#include <ESP8266mDNS.h>
+
+#include <InfluxDbClient.h>
+Point temperature("lounge32");
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
@@ -15,16 +33,17 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define INFLUXDB_USER 
 #define INFLUXDB_PASS 
 
-#define ONE_WIRE_BUS D2
-Influxdb influx(INFLUXDB_HOST);
+
+InfluxDBClient *influx;
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature DS18B20(&oneWire);
 WiFiServer server(80);
+IPAddress logging_server;
 
 const char* ssid = "cottage"; //your WiFi Name
 const char* password = WIFIPASSWORD;  //Your Wifi Password
 
-UDPLogger loggit("piaware.local",8787);
+UDPLogger *loggit;
 
 void connect_to_wifi()
 {
@@ -43,30 +62,48 @@ void connect_to_wifi()
     }
   }
 
-loggit.init();
 
-  if (!MDNS.begin("lounge")) {
+
+  if (!MDNS.begin("lounge32")) {
         Serial.println("Error setting up MDNS responder!");
-        loggit.send("failed to start mDNS responder\n");
   }
-    else{}
+    else{
       Serial.println("mDNS dallas.local responder started OK");
-      loggit.send("mDNS dallas.local started OK\n");
-      
+    }
+#ifdef ESP32
+    logging_server = MDNS.queryHost("piaware");
+#else
+    logging_server =  IPAddress(192,168,0,3);
+#endif
+    Serial.println(logging_server.toString());
+    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)8788);
+    loggit->init();
 }
 
 void setup() {
-  influx.setDb(INFLUXDB_DATABASE);
+ 
   Serial.begin(9600);
   delay(10); 
+  pinMode(ONE_WIRE_BUS,INPUT_PULLUP);
 
-  pinMode(D2,INPUT_PULLUP);
+  unsigned char devs;
+  bool devices = oneWire.search(&devs);
+
+  Serial.println("Search I2C devices , found : " + String(devices) + " : number of devs : " + String(devs));
+  String influx_url;
+  influx_url = "http://" + logging_server.toString() + ":8086";
+  influx = new InfluxDBClient(influx_url.c_str(),"boiler_measurements");
 
   Serial.println();
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid); 
+  
   connect_to_wifi();
+  
+  influx_url = "http://" + logging_server.toString() + ":8086";
+  influx = new InfluxDBClient(influx_url.c_str(),"boiler_measurements");
+
   Serial.println("Built on " + String(compile_date)+ "\n");
   Serial.print("Connected to cottage : IP Address ");
 
@@ -83,12 +120,13 @@ void setup() {
 
 void send_measurement(float value)
 {
-   InfluxData measurement("lounge");
-   measurement.addValue("temp",value);
+   temperature.clearFields();
+  // Report RSSI of currently connected network
+  temperature.addField("rssi", WiFi.RSSI());
+  temperature.addField("temp",value);
+  influx->writePoint(temperature);
 
-   influx.write(measurement);
-
-   loggit.send(measurement.toString() + "\n");
+   loggit->send(temperature.toLineProtocol() + "\n");
 }
 
 float current_temp = 0.0;
@@ -114,7 +152,9 @@ void processWebRequest(WiFiClient client)
   client.println(""); 
   client.println("Temperature is : ");
   client.print(current_temp=getTemperature());
-  client.println(""); 
+  client.println("<p>WiFi signal strength RSSI ");
+  client.println(WiFi.RSSI());
+  client.println("</p>") ;
   client.flush(); 
 }
 unsigned long old_time=0;
@@ -122,8 +162,9 @@ void loop() {
   unsigned long int the_time;
   float temperatureC;
 
+#ifndef ESP32
   MDNS.update();
-  
+#endif
   WiFiClient client = server.available();
   if (client) {  
     Serial.println("new client ");
