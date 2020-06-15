@@ -1,0 +1,1 @@
+A file that does nothing but force git to track the enclosing include directory to stop platformio warning complaining the include dir does not exist
