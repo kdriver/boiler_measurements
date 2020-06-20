@@ -22,7 +22,8 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-Point temperature("lounge32");
+#define NAME "kitchen"
+Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
@@ -31,8 +32,9 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define INFLUXDB_DATABASE "boiler_measurements"
  //if used with authentication
 #define INFLUXDB_USER 
-#define INFLUXDB_PASS 
+#define INFLUXDB_PASS
 
+#define NAME "kitchen"
 
 InfluxDBClient *influx;
 OneWire oneWire(ONE_WIRE_BUS);
@@ -64,11 +66,11 @@ void connect_to_wifi()
 
 
 
-  if (!MDNS.begin("lounge32")) {
+  if (!MDNS.begin(NAME)) {
         Serial.println("Error setting up MDNS responder!");
   }
     else{
-      Serial.println("mDNS dallas.local responder started OK");
+      Serial.println("mDNS " + String(NAME) + ".local responder started OK");
     }
 #ifdef ESP32
     logging_server = MDNS.queryHost("piaware");
@@ -92,7 +94,7 @@ void setup() {
   Serial.println("Search I2C devices , found : " + String(devices) + " : number of devs : " + String(devs));
   String influx_url;
   influx_url = "http://" + logging_server.toString() + ":8086";
-  influx = new InfluxDBClient(influx_url.c_str(),"boiler_measurements");
+  influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_DATABASE);
 
   Serial.println();
   Serial.println();
@@ -102,7 +104,7 @@ void setup() {
   connect_to_wifi();
   
   influx_url = "http://" + logging_server.toString() + ":8086";
-  influx = new InfluxDBClient(influx_url.c_str(),"boiler_measurements");
+  influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_DATABASE);
 
   Serial.println("Built on " + String(compile_date)+ "\n");
   Serial.print("Connected to cottage : IP Address ");
