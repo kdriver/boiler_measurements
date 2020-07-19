@@ -611,8 +611,10 @@ bool boiler_on = false;
           if (WiFi.status() == WL_CONNECTED)
             p_lcd("WiFi OK",72,0);
           else
+          {
             p_lcd("No WiFi",72,0);
-
+            reset = true;
+          }
           p_lcd(address + " " + String(time_now/1000),0,8);
           if ( boiler_status == true )
           {

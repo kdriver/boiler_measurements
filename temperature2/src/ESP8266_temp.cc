@@ -8,7 +8,7 @@
 #else
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#define ONE_WIRE_BUS GPIO_NUM_4
+//#define ONE_WIRE_BUS GPIO_NUM_4
 #define ONE_WIRE_BUS 4
 #define DEVICE "ESP32"
 
@@ -22,7 +22,7 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-#define NAME "kitchen"
+#define NAME "radiators"
 Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -33,8 +33,6 @@ const char compile_date[] = __DATE__ " " __TIME__;
  //if used with authentication
 #define INFLUXDB_USER 
 #define INFLUXDB_PASS
-
-#define NAME "kitchen"
 
 InfluxDBClient *influx;
 OneWire oneWire(ONE_WIRE_BUS);
@@ -49,6 +47,7 @@ UDPLogger *loggit;
 
 void connect_to_wifi()
 {
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   int counter=0;
   while (WiFi.status() != WL_CONNECTED) {
@@ -148,7 +147,9 @@ float getTemperature() {
 void processWebRequest(WiFiClient client)
 {
   String request = client.readStringUntil('\r');
-  Serial.println(request);
+  Serial.print(request);
+  Serial.print(" from ");
+  Serial.println(client.remoteIP().toString());
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: text/html");
   client.println(""); 
