@@ -117,7 +117,7 @@ int post_it(String payload ,String db)
     return response;
 }
 #endif
-void tell_influx(Point &p,unsigned int status, unsigned int time_interval)
+void report_event_to_influx(Point &p,unsigned int status, unsigned int time_interval)
 {
   String payload; 
   //int response;
@@ -150,16 +150,7 @@ void diag_influx(Point &p, unsigned int sound, unsigned int boiler_status)
   //post_it(payload,"boiler_measurements");
 }
 
-#ifdef REDUNDENT
-void tick_influx(String text,String nowt,float value)
-{
-    String payload;
-    //int response;
-    payload = "esp32_sound text=" + text + " value=" + String(value);
-    post_it(payload,"ticks");
-    //Serial.print(response); 
-}
-#endif
+
 hw_timer_t *timer=NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 //History *history = new History(300);
@@ -648,7 +639,7 @@ bool boiler_on = false;
             String text;
             text = String("Boiler switched ON \n ") ;
             loggit->send(text);
-            tell_influx(boiler_s,BOILER_ON,0);
+            report_event_to_influx(boiler_s,BOILER_ON,0);
             boiler_status = BOILER_ON;
             boiler_switched_on_time = time_now;
           
@@ -661,7 +652,7 @@ bool boiler_on = false;
             on_for = interval;
             if ( interval > 5 )
             {
-              tell_influx(boiler_s,BOILER_OFF,interval);
+              report_event_to_influx(boiler_s,BOILER_OFF,interval);
             }
             boiler_status = BOILER_OFF;
             sprintf(output,"boiler was on for %d seconds \n",interval);

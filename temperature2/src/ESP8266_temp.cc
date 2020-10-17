@@ -40,6 +40,9 @@ DallasTemperature DS18B20(&oneWire);
 WiFiServer server(80);
 IPAddress logging_server;
 
+bool reset = false;
+unsigned long int reset_time ;
+
 const char* ssid = "cottage"; //your WiFi Name
 const char* password = WIFIPASSWORD;  //Your Wifi Password
 
@@ -92,8 +95,8 @@ void setup() {
 
   Serial.println("Search I2C devices , found : " + String(devices) + " : number of devs : " + String(devs));
   String influx_url;
-  influx_url = "http://" + logging_server.toString() + ":8086";
-  influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_DATABASE);
+  //influx_url = "http://" + logging_server.toString() + ":8086";
+  //influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_DATABASE);
 
   Serial.println();
   Serial.println();
@@ -127,7 +130,7 @@ void send_measurement(float value)
   temperature.addField("temp",value);
   influx->writePoint(temperature);
 
-   loggit->send(temperature.toLineProtocol() + "\n");
+  loggit->send(temperature.toLineProtocol() + "\n");
 }
 
 float current_temp = 0.0;
@@ -180,5 +183,16 @@ void loop() {
     temperatureC = getTemperature();
     send_measurement(temperatureC);
     current_temp = temperatureC;
+  }
+  if (WiFi.status() != WL_CONNECTED)
+  { 
+            reset = true;
+            reset_time = the_time;
+  }   
+  if ( reset == true )
+  { 
+      // wait 5 seconds to restart.
+      if (( the_time - reset_time ) > 5000)
+            ESP.restart();                        
   }
 }
