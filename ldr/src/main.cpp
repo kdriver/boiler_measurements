@@ -12,7 +12,7 @@ enum Attribute { OnThreshold,OffThreshold,Debug };
 #include <UDPLogger.h>
 //#include <esp_log.h>
 
-#define MDNS_NAME "ldr"
+#define MDNS_NAME "ufh"
 
 IPAddress logging_server;
 UDPLogger *loggit;
@@ -74,7 +74,8 @@ unsigned int smooth_off = 0;
 
 void tell_influx(BoilerState status, unsigned int time_interval)
 {
-  InfluxData measurement("radiators_ldr");
+  //InfluxData measurement("radiators_ldr");
+  InfluxData measurement("ufh_ldr");
   
   measurement.addValue("interval",time_interval);
   measurement.addValue("interval_mins",time_interval/60);
@@ -92,7 +93,7 @@ void tell_influx(BoilerState status, unsigned int time_interval)
 
 void tick_influx(String tag1,String tag2,float value)
 {
-  InfluxData measurement("tick_ldr");
+  InfluxData measurement("tick_ufhldr");
   measurement.addTag("text",tag1);
   measurement.addTag("info",tag2);
   measurement.addValue("value",value);
@@ -100,7 +101,7 @@ void tick_influx(String tag1,String tag2,float value)
 }
 void report_influx(String tag1,String tag2,float value)
 {
-  InfluxData measurement("report_ldr");
+  InfluxData measurement("report_ufhldr");
   measurement.addTag("text",tag1);
   measurement.addTag("info",tag2);
   measurement.addValue("value",value);
@@ -122,7 +123,13 @@ void setup(void){
   }
   //logging_server = MDNS.queryHost("piaware");
   //Serial.println(logging_server.toString());
-  loggit = new UDPLogger("piaware.local",(unsigned short int)8787);
+
+  #ifdef ESP32
+  String logging_host = String("piaware.local");
+  #else
+  String logging_host = String("192.168.0.3");
+  #endif
+  loggit = new UDPLogger(logging_host.c_str(),(unsigned short int)8788);
   loggit->init();
   
   String address = WiFi.localIP().toString();
@@ -132,7 +139,7 @@ void setup(void){
   Serial.println(address);
 
 if (MDNS.begin(MDNS_NAME)) {              // Start the mDNS responder for esp8266.local
-    Serial.println("mDNS responder started for host ldr.local");
+    Serial.println("mDNS responder started for host ufh.local");
   } else {
     Serial.println("Error setting up MDNS responder!");
   }
@@ -297,7 +304,7 @@ void handleUDPPackets(void) {
     text = command(myData);
    
     control.beginPacket(control.remoteIP(),control.remotePort());
-    String answer = "boiler ldr > " + text + "\n";
+    String answer = "ufh ldr > " + text + "\n";
     control.write(answer.c_str() );
     control.endPacket();
 
@@ -340,8 +347,11 @@ void loop() {
 if ( (current_ts - last_tick_ts)>TICK_INTERVAL_MS)
  {
   last_tick_ts = current_ts;
-  report_influx("ldr","level",(float)current_level);
-  //loggit->send("ldr current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n" );
+  report_influx("ufh","level",(float)current_level);
+  String my_text = "ufh current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n";
+  loggit->send(my_text +  "\n" );
+  Serial.println(my_text);
+
  }
   boiler = boiler_no_change;
 

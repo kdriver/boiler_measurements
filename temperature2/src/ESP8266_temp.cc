@@ -22,7 +22,7 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-#define NAME "radiators"
+#define NAME "kitchen"
 Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;

@@ -18,6 +18,10 @@ String local_ip;
 UDPLogger::UDPLogger(const char *ip,unsigned short int port)
 {
     strcpy(remote,ip);
+    Serial.print("Initialise logger to ");
+    Serial.print(remote);
+    Serial.print(" ");
+    Serial.println(port);
     dest_port = port;
 }
 
