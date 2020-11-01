@@ -348,10 +348,9 @@ if ( (current_ts - last_tick_ts)>TICK_INTERVAL_MS)
  {
   last_tick_ts = current_ts;
   report_influx("ufh","level",(float)current_level);
-  String my_text = "ufh current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level ) + "\n";
-  loggit->send(my_text +  "\n" );
+  String my_text = "ufh current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level );
+  loggit->send(my_text + "\n");
   Serial.println(my_text);
-
  }
   boiler = boiler_no_change;
 

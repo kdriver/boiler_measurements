@@ -1,6 +1,8 @@
 #ifndef StringHandler_h
 #define StringHandler_h
 
+#define COMMAND_PORT 8788
+
 enum Grammar { CommandPrimitive, VariablePrimitive , Equals , Value , Done };
 
 struct CommandSet { 

@@ -1,6 +1,7 @@
 #ifndef mylogger
 #define mylogger 
 
+#define LOGGIT_PORT 8788
 
 class UDPLogger {
     public:

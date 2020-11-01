@@ -24,7 +24,7 @@ Point diag("boiler_sound");
 Point boiler_s("boiler_status");
 
 enum Command  { Get,Set,Help,Status,Reset};
-enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,Debug };
+enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,ResetCounter,Debug };
 
 #include <StringHandler.h>
 CommandSet sound_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
@@ -33,6 +33,7 @@ AttributeSet sound_attributes[] = {
      {"LOOP_DELAY",LoopDelay},
      {"SAMPLE_PERIOD",SamplePeriod},
      {"SAMPLES_FOR_AVERAGE",SamplesForAverage},
+     {"RESET_COUNTER",ResetCounter},
      {"DEBUG",Debug}
      };
 
@@ -63,6 +64,7 @@ unsigned int boiler;
 unsigned int boiler_status= BOILER_OFF;
 unsigned int boiler_switched_on_time=0;
 unsigned int abs_average;
+unsigned int number_of_resets;
 char web_page[16384];
 //unsigned char historic_readings[1000];
 
@@ -216,7 +218,8 @@ Serial.println("I'm alive");
 Serial.println("Built on : " + String(compile_date));
 display.clearDisplay();
 p_lcd("Searching for WiFi",0,0);
- 
+int restart_counter;
+restart_counter=0; 
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
@@ -228,6 +231,14 @@ p_lcd("Searching for WiFi",0,0);
       rot = 0;
     display.writeFillRect(0,8,5,8,SSD1306_BLACK);
     p_lcd(c,0,8);
+    p_lcd("          ",0,16);
+    p_lcd(String(restart_counter),0,16);
+    restart_counter++;
+    if ( restart_counter == 500 )
+    {
+      NVS.setInt("restart_counter",number_of_resets+1);
+      ESP.restart();
+    }
   }
   
   
@@ -260,7 +271,7 @@ p_lcd("Searching for WiFi",0,0);
     
     logging_server = MDNS.queryHost("piaware");
     Serial.println(logging_server.toString());
-    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)8788);
+    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)LOGGIT_PORT);
     loggit->init();
 
     bool ans;
@@ -273,6 +284,7 @@ p_lcd("Searching for WiFi",0,0);
       NVS.setInt("sample_period",(uint32_t)50);
       NVS.setInt("sample_average",(uint32_t)30);
       NVS.setInt("b_on_thresh",(uint32_t)120);
+      NVS.setInt("reset_counter",(uint32_t)0);
       ans = NVS.setInt("b_on_thresh1",(uint32_t)1800,true);
       loggit->send("initialise NVRAM values " + String(ans?"True":"False") + "\n");
     }
@@ -283,6 +295,12 @@ p_lcd("Searching for WiFi",0,0);
       loop_delay = NVS.getInt("loop_delay");
       sample_period = NVS.getInt("sample_period");
       sample_average = NVS.getInt("sample_average");
+      number_of_resets = NVS.getInt("reset_counter");
+      if ( number_of_resets > 1000 )
+      {
+        NVS.setInt("reset_counter",(uint32_t)0);
+        loggit->send("reset the counter for the number of resets\n");
+      }
       pp_history->update_ma_period(sample_average);
       boiler_on_threshold_1 = NVS.getInt("b_on_thresh1");
 
@@ -291,6 +309,7 @@ p_lcd("Searching for WiFi",0,0);
   loggit->send("\n sample Average       set to " + String(sample_average) );
   loggit->send("\n loop_delay           set to " + String(loop_delay) );
   loggit->send("\n sample_period        set to " + String(sample_period) + "\n" );
+  loggit->send("\n reset_counter        set to " + String(number_of_resets) + "\n" );
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     sprintf(web_page,index_html,pp_history->moving_average(sample_average),boiler_status==0?"OFF":"ON",boiler_on_threshold,loop_delay,sample_period,sample_average,boiler_on_threshold_1,(sample_average*loop_delay/1000.0));
@@ -368,7 +387,7 @@ p_lcd("Searching for WiFi",0,0);
   Serial.println("start UDP server on port 8788 " + String(udp));
   
   loggit->send("up and running\n");
- 
+  loggit->send("command interface on UDP " + String(COMMAND_PORT) + "\n");
   String influx_url;
   influx_url = "http://" + logging_server.toString() + ":8086";
   tick_client = new InfluxDBClient(influx_url.c_str(),"ticks");
@@ -473,6 +492,9 @@ String command(String command)
           case SamplePeriod:
             answer = "Sample period (ms) : " + String(sample_period);
           break;
+          case ResetCounter:
+            answer = "Number of resets   : " + String(number_of_resets);
+          break;
            case Debug:
             answer = "DEBUG_ON : " + String(DEBUG_ON);
           break;
@@ -502,7 +524,10 @@ String command(String command)
             case SamplePeriod:
               sample_period = value;
               NVS.setInt("sample_period",(uint32_t)sample_period,true);
-            break;      
+            break;  
+            case ResetCounter:
+              NVS.setInt("reset_counter",(uint32_t)value,true);
+            break;        
             case Debug:
               if ( value == 0 )
                 DEBUG_ON = false;
@@ -538,6 +563,7 @@ String command(String command)
       answer = answer + "\nSample Period   : " + String(sample_period);
       answer = answer + "\nSamples for Ave : " + String(sample_average);
       answer = answer + "\nLoop Delay      : " + String(loop_delay);
+      answer = answer + "\nReset Counter   : " + String(number_of_resets)+ "\n";
       answer = answer + "\nDebug           : " + String(DEBUG_ON)+ "\n";
     }
     break;
@@ -629,10 +655,12 @@ bool boiler_on = false;
               reset_count = reset_count - 1;
               Serial.println("Counting down to reset " + String(reset_count));
               if ( reset_count == 0 )
+              {
+                NVS.setInt("restart_counter",number_of_resets+1);
                 ESP.restart();
+              }
           }
         }
-
 
         if ( (boiler_status == BOILER_OFF) && (boiler_on == true) )
         {
