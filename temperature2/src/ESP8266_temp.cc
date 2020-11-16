@@ -4,8 +4,9 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #define ONE_WIRE_BUS D2
-
+#define BLUE_LED 2
 #else
+#define BLUE_LED 2
 #include <WiFi.h>
 #include <ESPmDNS.h>
 //#define ONE_WIRE_BUS GPIO_NUM_4
@@ -22,7 +23,7 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-#define NAME "kitchen"
+#define NAME "snug"
 Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -89,6 +90,7 @@ void setup() {
   Serial.begin(9600);
   delay(10); 
   pinMode(ONE_WIRE_BUS,INPUT_PULLUP);
+  pinMode(BLUE_LED,OUTPUT);
 
   unsigned char devs;
   bool devices = oneWire.search(&devs);
@@ -138,6 +140,7 @@ float current_temp = 0.0;
 //DS18B20 code
 float getTemperature() {
   float temp;
+
   do {
     DS18B20.requestTemperatures(); 
     temp = DS18B20.getTempCByIndex(0);
@@ -163,6 +166,11 @@ void processWebRequest(WiFiClient client)
   client.println("</p>") ;
   client.flush(); 
 }
+void flash_the_LED() {
+  digitalWrite(BLUE_LED,LOW);
+  delay(100);
+  digitalWrite(BLUE_LED,HIGH);
+}
 unsigned long old_time=0;
 void loop() {
   unsigned long int the_time;
@@ -183,6 +191,7 @@ void loop() {
     temperatureC = getTemperature();
     send_measurement(temperatureC);
     current_temp = temperatureC;
+    flash_the_LED();
   }
   if (WiFi.status() != WL_CONNECTED)
   { 
