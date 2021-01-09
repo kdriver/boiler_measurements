@@ -218,7 +218,7 @@ Serial.println("I'm alive");
 Serial.println("Built on : " + String(compile_date));
 display.clearDisplay();
 p_lcd("Searching for WiFi",0,0);
-int restart_counter;
+unsigned int restart_counter;
 restart_counter=0; 
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
@@ -229,11 +229,10 @@ restart_counter=0;
     rot = rot + 1 ;
     if ( rot == sizeof(prog))
       rot = 0;
-    display.writeFillRect(0,8,5,8,SSD1306_BLACK);
+    display.writeFillRect(0,8,5,16,SSD1306_BLACK);
     p_lcd(c,0,8);
-    p_lcd("          ",0,16);
     p_lcd(String(restart_counter),0,16);
-    restart_counter++;
+    restart_counter = restart_counter + 1;
     if ( restart_counter == 500 )
     {
       NVS.setInt("restart_counter",number_of_resets+1);
@@ -636,6 +635,7 @@ bool boiler_on = false;
           if ( boiler_status == true )
           {
             p_lcd("BOILER ON ",0,0);
+            p_lcd("                  ",0,16);
             p_lcd("ON for " + String((time_now - boiler_switched_on_time)/1000),0,16);
           }
           else

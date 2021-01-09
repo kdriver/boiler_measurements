@@ -40,7 +40,7 @@ enum BoilerAction { boiler_switched_on, boiler_switched_off, boiler_no_change};
 #define OFF_THRESHOLD 300
 
 // 10 seconds
-#define TICK_INTERVAL_MS (1000*5)
+#define TICK_INTERVAL_MS (1000*30)
 unsigned long last_tick_ts = millis();
 
 bool DEBUG_ON=false;
