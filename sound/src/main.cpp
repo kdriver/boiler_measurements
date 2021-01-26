@@ -59,6 +59,7 @@ unsigned long epoch;
 unsigned long time_now;
 unsigned long previous_time;
 unsigned long since_epoch;
+unsigned long clean_display_time;
 
 unsigned int boiler;
 unsigned int boiler_status= BOILER_OFF;
@@ -218,7 +219,7 @@ Serial.println("I'm alive");
 Serial.println("Built on : " + String(compile_date));
 display.clearDisplay();
 p_lcd("Searching for WiFi",0,0);
-int restart_counter;
+unsigned int restart_counter;
 restart_counter=0; 
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
@@ -229,14 +230,15 @@ restart_counter=0;
     rot = rot + 1 ;
     if ( rot == sizeof(prog))
       rot = 0;
-    display.writeFillRect(0,8,5,8,SSD1306_BLACK);
+    display.writeFillRect(0,8,5,16,SSD1306_BLACK);
     p_lcd(c,0,8);
-    p_lcd("          ",0,16);
     p_lcd(String(restart_counter),0,16);
-    restart_counter++;
+    restart_counter = restart_counter + 1;
     if ( restart_counter == 500 )
     {
-      NVS.setInt("restart_counter",number_of_resets+1);
+      unsigned int nr;
+      nr = number_of_resets + 1;
+      NVS.setInt("restart_counter",nr);
       ESP.restart();
     }
   }
@@ -416,6 +418,7 @@ restart_counter=0;
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   epoch = millis();
   previous_time = epoch;
+  clean_display_time = epoch;
 //  Just set the threshold to the first reading. We'll average it out later.
   threshold = analogRead(A0);
 
@@ -549,7 +552,7 @@ String command(String command)
       int ma = pp_history->moving_average(sample_average);
       if ( boiler_status == BOILER_ON)
       {
-        int boiler_on_for;
+        unsigned int boiler_on_for;
         boiler_on_for = (millis()/1000) - boiler_switched_on_time;
         answer = "Boiler has been ON for " + String(boiler_on_for) + " seconds, Current ave " + String(ma) + " , ";
       }
@@ -625,6 +628,12 @@ bool boiler_on = false;
         
         if ( (time_now - last_time)  >  2000 )
         {
+          if ( (time_now - clean_display_time ) > (300*1000))
+          {
+            // wipe the display
+            display.clearDisplay();
+            clean_display_time = time_now; 
+          }
           if (WiFi.status() == WL_CONNECTED)
             p_lcd("WiFi OK",72,0);
           else
@@ -636,6 +645,7 @@ bool boiler_on = false;
           if ( boiler_status == true )
           {
             p_lcd("BOILER ON ",0,0);
+            p_lcd("                  ",0,16);
             p_lcd("ON for " + String((time_now - boiler_switched_on_time)/1000),0,16);
           }
           else
@@ -656,7 +666,9 @@ bool boiler_on = false;
               Serial.println("Counting down to reset " + String(reset_count));
               if ( reset_count == 0 )
               {
-                NVS.setInt("restart_counter",number_of_resets+1);
+                unsigned int nr;
+                nr = number_of_resets + 1 ;
+                NVS.setInt("restart_counter",nr);
                 ESP.restart();
               }
           }
