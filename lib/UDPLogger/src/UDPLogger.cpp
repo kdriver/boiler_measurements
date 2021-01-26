@@ -13,7 +13,7 @@ WiFiUDP Udp;
 byte tx_buffer[1000];
 
 unsigned int len;
-byte tx[] = {'H','E','L','L','O','\n'};
+byte tx[] = {' ','H','E','L','L','O','\n'};
 String local_ip;
 UDPLogger::UDPLogger(const char *ip,unsigned short int port)
 {
@@ -27,11 +27,15 @@ UDPLogger::UDPLogger(const char *ip,unsigned short int port)
 
 void UDPLogger::init(void)
 {
+    local_ip = WiFi.localIP().toString();
+    while ( local_ip.length() < 15)
+        local_ip = local_ip + ' ';
     Udp.begin(8787);
     Udp.beginPacket(remote,dest_port);
+    local_ip.getBytes(tx_buffer,sizeof(tx_buffer));
+    Udp.write(tx_buffer,local_ip.length());
     Udp.write(tx,sizeof(tx));
     Udp.endPacket();
-    local_ip = WiFi.localIP().toString();
 }
 
 void UDPLogger::send(String s )

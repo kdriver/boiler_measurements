@@ -23,6 +23,9 @@
 		},
 		{
 			"path": "serial"
+		},
+		{
+			"path": "ttgo"
 		}
 	],
 	"settings": {
