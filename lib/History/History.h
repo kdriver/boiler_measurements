@@ -4,8 +4,9 @@
 
 class History {
     public:
-        History(unsigned int the_size=10,unsigned int num_samples=200);
-        void add(int d);
+        History(unsigned int the_size=10,unsigned int num_samples=10);
+        void add(int);
+        void add(float);
         float average(void);
         int last(void);
         float moving_average(unsigned int samples);
@@ -19,8 +20,9 @@ class History {
         void inc(void);
         String emphasis(int threshold,int value);
         unsigned int length;  // how big is the data array created on construction
-        unsigned int *data;   // the data array of integers
-        unsigned int *ma_data;   // the moving avegrage data array of integers
+        float *data;   // the data array of integers
+        float *ma_data;   // the moving avegrage data array of integers
+
         unsigned long *time_data; // timestamp of samples/ moving average
         unsigned int current_index;  // where we will put the next data item added
         unsigned int entries;  // how many entries have been added. Only relavent when its less than length in average calculations.

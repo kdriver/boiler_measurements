@@ -8,6 +8,7 @@
 #include <UDPLogger.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <History.h>
 
 
 
@@ -27,6 +28,8 @@ IPAddress logging_server;
 UDPLogger *loggit;
 const char compile_date[] = __DATE__ " " __TIME__;
 WiFiUDP  control;
+
+History temps,pressures,winds;
 
 
 TFT_eSPI tft = TFT_eSPI();   
@@ -125,7 +128,7 @@ void setup()
     tft.setRotation(1); // Landscape orientation, USB at bottom right
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_RED,TFT_BLACK);
-    tft.setCursor(20,50);
+    tft.setCursor(0,50);
     tft.setTextSize(3);
     tft.setTextFont(1);
     tft.println("Initialising");
@@ -137,6 +140,16 @@ void setup()
 
 unsigned int dx=240;
 unsigned int dy=135;
+
+void write_direction(float now, float ave, int where ){
+    tft.setCursor(dx - 25,50+(tft.fontHeight(1)*where));
+    if ( now > ave)
+        tft.print('U');
+    else if ( now == ave)
+            tft.print('=');
+        else
+            tft.print('D');
+}
 
 void loop(){
     String json_text;
@@ -166,8 +179,8 @@ void loop(){
             // force an initial read
             weather_time = 0;
             first=true;
-            tft.drawRect(dx-11,49,11,dy-49,TFT_BLUE);
-            tft.fillRect(dx-10,50,10,(dy-50),TFT_BLUE);
+            //tft.drawRect(dx-11,49,11,dy-49,TFT_BLUE);
+            //tft.fillRect(dx-10,50,10,(dy-50),TFT_BLUE);
         }
         //Serial.println("get num planes");
         the_time = millis();
@@ -187,9 +200,17 @@ void loop(){
         tft.setTextFont(1);
         tft.print("Planes : " + numplanes + "   ");
 
-        how_long_left = round((( the_time - weather_time )/ full_time )*(dy-15));
-        tft.fillRect(dx-10,50,10,how_long_left,TFT_BLACK);
-        loggit->send("hll -> " + String(how_long_left) + " " + String(the_time-weather_time)+"\n");
+        how_long_left = round((( the_time - weather_time )/ full_time )*(dy-50));
+        //tft.fillRect(dx-10,50,9,how_long_left,TFT_BLACK);
+        unsigned long seconds_left,secs,mins;
+        seconds_left = (full_time-(the_time-weather_time))/1000;
+        mins = floor(seconds_left/60);
+        secs =  seconds_left % 60;
+        tft.setTextSize(2);
+        tft.setCursor(0,dy-tft.fontHeight());
+        tft.setTextColor(TFT_OLIVE,TFT_BLACK);
+        tft.printf("time left %2lu:%02lu  ",mins,secs);
+        loggit->send("hll -> " + String(how_long_left) + " "  +String(mins)+ ":" + String(secs) + " mins:secs\n");
 
     }
     if (first || (millis() > (weather_time + full_time)))
@@ -215,15 +236,18 @@ void loop(){
             float temperature = doc["main"]["temp"].as<float>();
             int pressure = doc["main"]["pressure"].as<int>();
             float wind_speed = doc["wind"]["speed"].as<float>();
+            temps.add(temperature);
+            pressures.add(pressure);   
+            winds.add(wind_speed); 
 
-
-            //Serial.print(" ");
-            //Serial.println(temperature);
-            
             tft.setTextColor(TFT_GREEN,TFT_BLACK);
             tft.print("temp  " + String(temperature)+ " C  \n");
             tft.print("press " + String(pressure)+ " mB  \n");
             tft.print("wind  " + String(wind_speed)+ " km/h   ");
+
+           write_direction(temperature,temps.average(),0);
+           write_direction(pressure,pressures.average(),1);
+           write_direction(wind_speed,winds.average(),2);
         }
         else
         {
@@ -232,7 +256,7 @@ void loop(){
             tft.print("error " + String(rcode)+ "  ");
         }
         http.end();
-        tft.fillRect(dx-10,50,10,(dy-50),TFT_BLUE);
+        //tft.fillRect(dx-10,50,10,(dy-50),TFT_BLUE);
     }
     delay(5);
 }

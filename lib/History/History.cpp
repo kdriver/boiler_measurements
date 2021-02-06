@@ -7,8 +7,8 @@ extern UDPLogger loggit;
 History::History(unsigned int size, unsigned int num_s)
 {
     length = size;
-    data = new  unsigned int[size+1];
-    ma_data = new  unsigned int[size+1];
+    data = new  float[size+1];
+    ma_data = new  float[size+1];
     time_data = new unsigned long[size+1];
     
     current_index = 0;
@@ -38,10 +38,25 @@ void History::add(int d)
     ma_data[ci] = moving_average(num_samples);
     time_data[ci] = millis();
 }
+void History::add(float d)
+{
+    unsigned int ci;
+    ci = current_index;
+    data[ci] = d;
+
+    inc();  
+
+    if ( entries < length )
+        entries = entries + 1;
+
+    ma_data[ci] = moving_average(num_samples);
+    time_data[ci] = millis();
+}
+
 // calculate the average of all of the entries
 float History::average(void)
 {
-    int total=0;
+    float total=0.0;
     int l;
 
     l =  entries < length ? entries : length;
@@ -68,7 +83,7 @@ unsigned int History::getHistory(unsigned int events, unsigned int *result, unsi
 
     for ( int i = 0 ; i < events ; i++ )
     {
-            *result = data[index];
+            *result = (int)data[index];
             if ( data[index] > m )
                 m = data[index];
 
@@ -77,7 +92,7 @@ unsigned int History::getHistory(unsigned int events, unsigned int *result, unsi
                 index = length - 1;
             result = result + 1;
     }
-    *max = m;
+    *max = (int)m;
     return events;
 }
 int History::last()
@@ -89,7 +104,7 @@ int History::last()
         index = current_index - 1 ;
         if ( index < 0 )
             index = length - 1;
-        answer =  data[index];
+        answer =  (int)data[index];
     }
     return answer;
 }

@@ -168,7 +168,7 @@ unsigned int measure() {
   unsigned int min_val = 1024;
   unsigned long start = millis();
   unsigned int reading;
-  unsigned int pp;
+  int pp;
 
   while ( millis() < ( start + measure_interval ))
   {
