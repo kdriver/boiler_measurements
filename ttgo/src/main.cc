@@ -19,29 +19,24 @@ enum Command  { Get,Set,Help,Status,Reset};
 enum Attribute { OnThreshold,Debug };
 CommandSet ttgo_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
 AttributeSet ttgo_attributes[] = {
-     {"ON_THRESHOLD",OnThreshold},
      {"DEBUG",Debug}
      };
 
-
+bool reset = false;
+bool DEBUG_ON  = false;
 IPAddress logging_server;
 UDPLogger *loggit;
 const char compile_date[] = __DATE__ " " __TIME__;
 WiFiUDP  control;
 
 History temps,pressures,winds;
-
+float current_temp,current_wind;
+int current_pressure;
+unsigned long reset_time;
 
 TFT_eSPI tft = TFT_eSPI();   
-#define BGCOLOR    0xAD75
-#define GRIDCOLOR  0xA815
-#define BGSHADOW   0x5285
-#define GRIDSHADOW 0x600C
 #define RED        0xF800
 #define WHITE      0xFFFF
-
-#define TFT_WIDTH_R 320
-#define TFT_HEIGHT_R 135
 
 void connect_to_wifi()
 {
@@ -66,6 +61,114 @@ void connect_to_wifi()
     else
       Serial.println("mDNS responder started");
 }
+String command(String command)
+{
+  command.toUpperCase();
+  StringHandler sh(command.c_str(),sizeof(ttgo_commands)/sizeof(CommandSet),ttgo_commands,sizeof(ttgo_attributes)/sizeof(AttributeSet),ttgo_attributes);
+  int toks;
+  toks = sh.tokenise();
+
+  if ( toks == 0 )
+    return String("no command");
+
+  if ( sh.validate() == false )
+  {
+    Serial.println("Invalid command with " + String(toks) + "tokens  : " + command);
+    return String("Invalid command ") + command;
+  }
+ 
+  String answer;
+  switch ( sh.get_command() )
+  {
+    case Get:
+      {
+        switch(sh.get_attribute())
+        {
+           case Debug:
+            answer = "DEBUG_ON : " + String(DEBUG_ON);
+          break;
+          default:
+            answer = "Unknown attribute " + String(sh.get_token(2));
+          break;
+        }
+      }
+    break;
+    case Set:
+    unsigned int value ;
+      value = sh.get_value();
+      switch(sh.get_attribute())
+          {
+               case Debug:
+              if ( value == 0 )
+                DEBUG_ON = false;
+              else
+                DEBUG_ON = true;
+            break;
+            default:
+              answer = "Unknown attribute " + String(sh.get_token(2));
+            break;
+          }
+    break;
+    case Reset:
+        answer = "Resetting in 5 seconds ";
+        reset = true;
+        reset_time = millis() + (5*1000);
+    break;
+    case Status:
+
+      answer = "\nweather stats\n";
+      answer = answer + "temp ave    : " + String(temps.average())     +  " now " + String(current_temp) + "\n";
+      answer = answer + "pessure ave : " + String(pressures.average()) +  " now " + String(current_pressure) + "\n";
+      answer = answer + "wind ave    : " + String(winds.average())     +  " now " + String(current_wind)  + "\n";
+      answer = answer + "samples     : " + String(winds.num_entries()) + "\n";
+  
+    break;
+    case Help:
+    answer = "Commands ( ";
+      for ( unsigned int i = 0 ; i < sizeof(ttgo_commands)/sizeof(CommandSet); i++ )
+      {
+        if ( i )
+          answer = answer + " | " + ttgo_commands[i].cmd ;
+        else
+          answer = answer + ttgo_commands[i].cmd ;
+      }
+      answer = answer + " ) , Attributes ( ";
+      for ( unsigned int i = 0 ; i < sizeof(ttgo_attributes)/sizeof(AttributeSet); i++ )
+      {
+        if ( i )
+          answer = answer + " | " + ttgo_attributes[i].attr ;
+        else
+          answer = answer + ttgo_attributes[i].attr  ;
+      }
+      answer = answer + " ) \n";
+        
+    break;
+  }
+  return answer;
+  
+   
+}
+void handleUDPPackets(void) {
+  char packet[500];
+  int cb = control.parsePacket();
+  String text;
+  if (cb) {
+    int length;
+    length  = control.read(packet, sizeof(packet));
+    String myData = "";
+    for(int i = 0; i < length; i++) {
+      myData += (char)packet[i];
+    }
+    Serial.println(myData);
+    text = command(myData);
+   
+    control.beginPacket(control.remoteIP(),control.remotePort());
+    String answer = String(MDNS_NAME) + " > " + text + "\n";
+    control.print(answer );
+    control.endPacket();
+
+  }
+}
 
 unsigned int colour = WHITE;
 int xpos=65,ypos=65;
@@ -79,11 +182,14 @@ Button2 *reverse_direction = new Button2(BUTTON1);
 Button2 *change_colour = new Button2(BUTTON2);
 HTTPClient http;
 
-unsigned long the_time;
+unsigned long plane_time;
 unsigned long weather_time;
+unsigned int last_secs = 0;
+
 bool clear_the_screen = false;
 bool  first=false;
-float full_time = 60 * 1000 * 15;
+#define MINUTES(M) (60*1000*M)
+unsigned long full_time = MINUTES(5);
 int how_long_left = 0;
 
 void reverse_clicked(Button2 & b )
@@ -109,8 +215,9 @@ void button_loop()
 
 void setup()
 {
-    the_time=millis();
+    unsigned long the_time=millis();
     weather_time = the_time;
+    plane_time = the_time;
     Serial.begin(9600);
     Serial.println("Running!");
 
@@ -131,9 +238,16 @@ void setup()
     tft.setCursor(0,50);
     tft.setTextSize(3);
     tft.setTextFont(1);
-    tft.println("Initialising");
+    tft.println("Initialising\n");
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_OLIVE,TFT_BLACK);
+    tft.println("Build date:");
+    tft.println(compile_date);
     Serial.println("Setup done");
     clear_the_screen = true;
+
+    int udp = control.begin(8788);
+    Serial.println("start UDP server on port 8788 " + String(udp)); 
 }
 
 
@@ -153,37 +267,32 @@ void write_direction(float now, float ave, int where ){
 
 void loop(){
     String json_text;
+    unsigned long int time_now = millis();
     button_loop();
-#ifdef BALL
-    button_loop();
-    tft.fillCircle(xpos,ypos,RADIUS,TFT_BLACK);
-    ypos = ypos + yinc;
-    if ( ypos == (dy - RADIUS ))
-        yinc = -1;
-    if ( ypos == (RADIUS+15) )
-        yinc = 1;
-    xpos = xpos + xinc;
-    if ( xpos == (dx - RADIUS ))
-        xinc = -1;
-    if ( xpos == (RADIUS ) )
-        xinc = 1;
-    tft.fillCircle(xpos,ypos,RADIUS,colour);
-#endif
+    handleUDPPackets();
 
-    if ( millis() > ( the_time + 10000 ) )
+    if ( reset == true )
+    {
+        if ( time_now > reset_time )
+        {
+            ESP.restart();
+        }
+    }
+
+
+    if ( time_now > ( plane_time + 5000 ) )
     {
         if ( clear_the_screen)
         {
             clear_the_screen = false;
             tft.fillScreen(TFT_BLACK);
-            // force an initial read
+           
             weather_time = 0;
             first=true;
-            //tft.drawRect(dx-11,49,11,dy-49,TFT_BLUE);
-            //tft.fillRect(dx-10,50,10,(dy-50),TFT_BLUE);
+           
         }
-        //Serial.println("get num planes");
-        the_time = millis();
+ 
+        
         http.useHTTP10(true);
         http.begin("http://192.168.0.3:4443/numplanes");
         http.GET();
@@ -200,32 +309,35 @@ void loop(){
         tft.setTextFont(1);
         tft.print("Planes : " + numplanes + "   ");
 
-        how_long_left = round((( the_time - weather_time )/ full_time )*(dy-50));
-        //tft.fillRect(dx-10,50,9,how_long_left,TFT_BLACK);
-        unsigned long seconds_left,secs,mins;
-        seconds_left = (full_time-(the_time-weather_time))/1000;
-        mins = floor(seconds_left/60);
-        secs =  seconds_left % 60;
+        how_long_left = round((( time_now - weather_time )/ full_time )*(dy-50));
+        
+        plane_time = time_now;
+
+    }
+    unsigned long seconds_left,secs,mins;
+    seconds_left = (full_time-(time_now-weather_time))/1000;
+    mins = floor(seconds_left/60);
+    secs =  seconds_left % 60;
+    if ( (secs != last_secs) && (time_now > 5000 ))
+    {   
+        last_secs = secs;
         tft.setTextSize(2);
         tft.setCursor(0,dy-tft.fontHeight());
         tft.setTextColor(TFT_OLIVE,TFT_BLACK);
-        tft.printf("time left %2lu:%02lu  ",mins,secs);
-        loggit->send("hll -> " + String(how_long_left) + " "  +String(mins)+ ":" + String(secs) + " mins:secs\n");
-
+        tft.printf("time left %2lu:%02lu     ",mins,secs);
+        //loggit->send("hll -> " + String(how_long_left) + " "  +String(mins)+ ":" + String(secs) + " mins:secs\n");
     }
-    if (first || (millis() > (weather_time + full_time)))
+    if (first || (time_now > (weather_time + full_time)))
     {
         first = false;
-        weather_time = millis();
+        weather_time = time_now;
         String url;
         //lat' : '50.836720', 'lon' : '-1.954630' , 'APPID' : 'ed410d3794e1bb9c7fd5cdad31ff703c','units' : 'metric' 
         url="http://api.openweathermap.org/data/2.5/weather";
         url=url+"?lat=50.836720&lon=-1.954630&APPID=ed410d3794e1bb9c7fd5cdad31ff703c&units=metric";
         http.begin(url);
         int rcode = http.GET();
-        //json_text = http.getString();
-        //Serial.print(" weather to ");
-        //Serial.print(rcode);
+
         tft.setCursor(0,50);
         tft.setTextSize(2);
         tft.setTextFont(1);
@@ -233,21 +345,21 @@ void loop(){
         {
             DynamicJsonDocument doc(2048);
             deserializeJson(doc,http.getString().c_str());
-            float temperature = doc["main"]["temp"].as<float>();
-            int pressure = doc["main"]["pressure"].as<int>();
-            float wind_speed = doc["wind"]["speed"].as<float>();
-            temps.add(temperature);
-            pressures.add(pressure);   
-            winds.add(wind_speed); 
+            current_temp = doc["main"]["temp"].as<float>();
+            current_pressure = doc["main"]["pressure"].as<int>();
+            current_wind = doc["wind"]["speed"].as<float>();
+            temps.add(current_temp);
+            pressures.add(current_pressure);   
+            winds.add(current_wind); 
 
             tft.setTextColor(TFT_GREEN,TFT_BLACK);
-            tft.print("temp  " + String(temperature)+ " C  \n");
-            tft.print("press " + String(pressure)+ " mB  \n");
-            tft.print("wind  " + String(wind_speed)+ " km/h   ");
+            tft.print("temp  " + String(current_temp)+ " C  \n");
+            tft.print("press " + String(current_pressure)+ " mB  \n");
+            tft.print("wind  " + String(current_wind)+ " km/h   ");
 
-           write_direction(temperature,temps.average(),0);
-           write_direction(pressure,pressures.average(),1);
-           write_direction(wind_speed,winds.average(),2);
+           write_direction(current_temp,temps.average(),0);
+           write_direction(current_pressure,pressures.average(),1);
+           write_direction(current_wind,winds.average(),2);
         }
         else
         {
@@ -256,7 +368,7 @@ void loop(){
             tft.print("error " + String(rcode)+ "  ");
         }
         http.end();
-        //tft.fillRect(dx-10,50,10,(dy-50),TFT_BLUE);
+     
     }
     delay(5);
 }
