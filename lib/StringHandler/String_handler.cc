@@ -21,6 +21,8 @@ StringHandler::StringHandler(const char *text,unsigned int num_cmds, CommandSet 
     commands = cmds;
     num_attributes = num_attr;
     attributes = attrs;
+    the_value = 0;
+    the_f_value = 0.0;
 }
 
 StringHandler::~StringHandler()
@@ -170,6 +172,9 @@ bool StringHandler::validate(void)
             case Value:
                 state = Done;
                 matched = true;
+                if ( strstr(t,".") != NULL )
+                    the_f_value = atof(t);
+                
                 the_value = atoi(t);
                 break;
             case Done:
@@ -194,4 +199,8 @@ unsigned int StringHandler::get_attribute(void)
 unsigned int StringHandler::get_value(void)
 {
     return the_value;
+}
+float StringHandler::get_f_value(void)
+{
+    return the_f_value;
 }

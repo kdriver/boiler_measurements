@@ -30,7 +30,8 @@
 	],
 	"settings": {
 		"files.associations": {
-			"algorithm": "cpp"
+			"algorithm": "cpp",
+			"functional": "cpp"
 		}
 	}
 }

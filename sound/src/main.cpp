@@ -12,8 +12,9 @@
 #include <Webtext.h>
 #include <ESPmDNS.h>
 #include <ArduinoNvs.h>
+#include <SimpleKalmanFilter.h>
 
-#define MDNS_NAME "boiler"
+#define MDNS_NAME "btest"
 
 #define DEVICE "ESP32"
 #include <InfluxDbClient.h>
@@ -24,7 +25,7 @@ Point diag("boiler_sound");
 Point boiler_s("boiler_status");
 
 enum Command  { Get,Set,Help,Status,Reset};
-enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,ResetCounter,Debug };
+enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,MeasurementUncertainty,EstimationUncertainty,Noise,ResetCounter,Debug };
 
 #include <StringHandler.h>
 CommandSet sound_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
@@ -33,6 +34,9 @@ AttributeSet sound_attributes[] = {
      {"LOOP_DELAY",LoopDelay},
      {"SAMPLE_PERIOD",SamplePeriod},
      {"SAMPLES_FOR_AVERAGE",SamplesForAverage},
+     {"MEASUREMENT_UNCERTAINTY",MeasurementUncertainty},
+     {"ESTIMATION_UNCERTAINTY",EstimationUncertainty},
+     {"NOISE",Noise},
      {"RESET_COUNTER",ResetCounter},
      {"DEBUG",Debug}
      };
@@ -54,6 +58,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define ON_THRESHOLD 900
 #define OFF_THRESHOLD 300
 #define WATCHDOG_INTERVAL 300
+
+SimpleKalmanFilter simpleKalmanFilter(2, 2, 0.01);
 
 unsigned long epoch;
 unsigned long time_now;
@@ -89,6 +95,11 @@ unsigned int sample_period = 50;
 unsigned int sample_average = 30;
 unsigned int boiler_on_threshold = 120;
 unsigned int boiler_on_threshold_1 = 1800;
+float measurement_uncertainty = 10;
+float estimation_uncertainty = 10;
+float noise = 1;
+
+
 
 AsyncWebServer server(80);
 void handleRoot();              // function prototypes for HTTP handlers
@@ -123,7 +134,9 @@ int post_it(String payload ,String db)
 void report_event_to_influx(Point &p,unsigned int status, unsigned int time_interval)
 {
   String payload; 
-  //int response;
+  //int response
+  loggit->send("suppress influx reporting event\n");
+  return;
   p.clearFields();
   p.addField("interval",(float)time_interval);
   p.addField("interval_mins",(float)(time_interval/60));
@@ -142,6 +155,8 @@ void report_event_to_influx(Point &p,unsigned int status, unsigned int time_inte
 }
 void diag_influx(Point &p, unsigned int sound, unsigned int boiler_status)
 {
+  loggit->send("suppress influx reporting diag\n");
+  return;
   p.clearFields();
   p.addField("value",(float)sound);
   p.addField("boiler_on",(float)(boiler_status==BOILER_ON?1:0));
@@ -158,6 +173,7 @@ hw_timer_t *timer=NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 //History *history = new History(300);
 History *pp_history = new History(500);
+History *ppk_history = new History(500);
 
 void IRAM_ATTR sound();
 void IRAM_ATTR measureit();
@@ -168,7 +184,7 @@ unsigned int measure() {
   unsigned int min_val = 1024;
   unsigned long start = millis();
   unsigned int reading;
-  int pp;
+  int pp,ppk;
 
   while ( millis() < ( start + measure_interval ))
   {
@@ -183,10 +199,12 @@ unsigned int measure() {
   }
   // work out the peak to peak value measure over the interval
   pp = max_val - min_val;
+  ppk = simpleKalmanFilter.updateEstimate(pp);
 
   // record it in the history
   portENTER_CRITICAL_ISR(&timerMux);
   pp_history->add(pp);
+  ppk_history->add(ppk);
   portEXIT_CRITICAL_ISR(&timerMux);
   return pp;
 }
@@ -279,14 +297,17 @@ restart_counter=0;
     bool ans;
     ans = NVS.begin("boiler");
     loggit->send("Initialised NVS access result " + String(ans?" OK \n": " Failed\n"));
-    if (NVS.getInt("b_on_thresh1") == 0  )
+    if ((NVS.getInt("b_on_thresh1") == 0 ) )
     {
-      
+      ans = NVS.eraseAll(true); loggit->send("eraseAll : " + String(ans) + "\n" );
       NVS.setInt("loop_delay",(uint32_t)50);
       NVS.setInt("sample_period",(uint32_t)50);
       NVS.setInt("sample_average",(uint32_t)30);
       NVS.setInt("b_on_thresh",(uint32_t)120);
       NVS.setInt("reset_counter",(uint32_t)0);
+      ans = NVS.setFloat("meas_unc",(float)10.0); loggit->send("Measure : " + String(ans) + "\n" );
+      NVS.setFloat("est_unc",(float)1.0);
+      NVS.setFloat("noise",(float)0.1);
       ans = NVS.setInt("b_on_thresh1",(uint32_t)1800,true);
       loggit->send("initialise NVRAM values " + String(ans?"True":"False") + "\n");
     }
@@ -298,6 +319,10 @@ restart_counter=0;
       sample_period = NVS.getInt("sample_period");
       sample_average = NVS.getInt("sample_average");
       number_of_resets = NVS.getInt("reset_counter");
+      measurement_uncertainty = NVS.getFloat("meas_unc");
+      estimation_uncertainty = NVS.getFloat("est_unc");
+      noise = NVS.getFloat("noise");
+
       if ( number_of_resets > 1000 )
       {
         NVS.setInt("reset_counter",(uint32_t)0);
@@ -306,23 +331,28 @@ restart_counter=0;
       pp_history->update_ma_period(sample_average);
       boiler_on_threshold_1 = NVS.getInt("b_on_thresh1");
 
-  loggit->send(" boiler on threshold1 set to " + String(boiler_on_threshold_1) );
-  loggit->send("\n boiler on (unused)   set to " + String(boiler_on_threshold) );
-  loggit->send("\n sample Average       set to " + String(sample_average) );
-  loggit->send("\n loop_delay           set to " + String(loop_delay) );
-  loggit->send("\n sample_period        set to " + String(sample_period) + "\n" );
-  loggit->send("\n reset_counter        set to " + String(number_of_resets) + "\n" );
+  loggit->send(" boiler on threshold1 set to " + String(boiler_on_threshold_1) + "\n");
+  loggit->send(" boiler on (unused)   set to " + String(boiler_on_threshold) + "\n");
+  loggit->send(" sample Average       set to " + String(sample_average) + "\n");
+  loggit->send(" loop_delay           set to " + String(loop_delay) + "\n");
+  loggit->send(" sample_period        set to " + String(sample_period) + "\n" );
+  loggit->send(" reset_counter        set to " + String(number_of_resets) + "\n" );
+  loggit->send(" measurement unc      set to " + String(measurement_uncertainty) + "\n" );
+  loggit->send(" estimation  unc      set to " + String(estimation_uncertainty) + "\n" );
+  loggit->send(" noise                set to " + String(noise) + "\n" );
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    sprintf(web_page,index_html,pp_history->moving_average(sample_average),boiler_status==0?"OFF":"ON",boiler_on_threshold,loop_delay,sample_period,sample_average,boiler_on_threshold_1,(sample_average*loop_delay/1000.0));
+    sprintf(web_page,index_html,pp_history->moving_average(sample_average),boiler_status==0?"OFF":"ON",loop_delay,sample_period,sample_average,boiler_on_threshold_1,measurement_uncertainty,estimation_uncertainty,noise,(sample_average*loop_delay/1000.0));
     request->send(200, "text/html", web_page);});               // Call the 'handleRoot' function when a client requests URI "/"
 
   server.on("/graph", HTTP_GET, [](AsyncWebServerRequest *request){
     String the_data;
     String the_mov_ave;
+    String the_kalman_estimate;
     String labels;
    
     int length = 0;
+    the_kalman_estimate = ppk_history->list();
     the_data = pp_history->list();
     the_mov_ave = pp_history->list_of_ma();
     length = pp_history->num_entries()-1;
@@ -336,7 +366,7 @@ restart_counter=0;
     }
     labels = labels + String("]");
     labels = pp_history->list_of_times();
-    sprintf(web_page,graph,labels.c_str(),the_data.c_str(),the_mov_ave.c_str());
+    sprintf(web_page,graph,labels.c_str(),the_data.c_str(),the_mov_ave.c_str(),the_kalman_estimate.c_str());
     request->send(200, "text/html", web_page);});     
 
   server.on("/get", HTTP_GET, [] (AsyncWebServerRequest *request) {
@@ -377,6 +407,27 @@ restart_counter=0;
       boiler_on_threshold_1 = inputMessage.toInt();
       ans = NVS.setInt("b_on_thresh1",boiler_on_threshold_1,true);
       loggit->send("set boiler threshold 1 to " + String(boiler_on_threshold_1) + " result " + String(ans?"OK\n":"Failed\n"));
+    }
+     if (request->hasParam(PARAM_INPUT_6)) {
+      inputMessage = request->getParam(PARAM_INPUT_6)->value();
+      inputParam = PARAM_INPUT_6;
+      measurement_uncertainty = inputMessage.toFloat();
+      ans = NVS.setFloat("meas_unc",measurement_uncertainty,true);
+      loggit->send("set measurement uncertainty to " + String(measurement_uncertainty) + " result " + String(ans?"OK\n":"Failed\n"));
+    }
+    if (request->hasParam(PARAM_INPUT_7)) {
+      inputMessage = request->getParam(PARAM_INPUT_7)->value();
+      inputParam = PARAM_INPUT_7;
+      estimation_uncertainty = inputMessage.toFloat();
+      ans = NVS.setFloat("est_unc",estimation_uncertainty,true);
+      loggit->send("set estimation uncertainty to " + String(estimation_uncertainty) + " result " + String(ans?"OK\n":"Failed\n"));
+    }
+    if (request->hasParam(PARAM_INPUT_8)) {
+      inputMessage = request->getParam(PARAM_INPUT_8)->value();
+      inputParam = PARAM_INPUT_8;
+      noise = inputMessage.toFloat();
+      ans = NVS.setFloat("noise",noise,true);
+      loggit->send("set noise  to " + String(noise) + " result " + String(ans?"OK\n":"Failed\n"));
     }
     Serial.println(inputMessage);
     request->send(200, "text/html", "HTTP GET request sent to your ESP on input field (" 
@@ -464,6 +515,7 @@ bool read_analogue()
 }
 String command(String command)
 {
+  bool ans;
   command.toUpperCase();
   StringHandler sh(command.c_str(),sizeof(sound_commands)/sizeof(CommandSet),sound_commands,sizeof(sound_attributes)/sizeof(AttributeSet),sound_attributes);
   int toks;
@@ -498,6 +550,15 @@ String command(String command)
           case ResetCounter:
             answer = "Number of resets   : " + String(number_of_resets);
           break;
+          case MeasurementUncertainty:
+            answer = "Measurement Uncertainty   : " + String(measurement_uncertainty);
+          break;
+          case EstimationUncertainty:
+            answer = "Estimation Uncertainty   : " + String(estimation_uncertainty);
+          break;
+           case Noise:
+            answer = "Noise  : " + String(noise);
+          break;
            case Debug:
             answer = "DEBUG_ON : " + String(DEBUG_ON);
           break;
@@ -530,7 +591,20 @@ String command(String command)
             break;  
             case ResetCounter:
               NVS.setInt("reset_counter",(uint32_t)value,true);
-            break;        
+            break;    
+            case MeasurementUncertainty:
+              measurement_uncertainty = sh.get_f_value();
+              ans = NVS.setFloat("meas_unc",(float)measurement_uncertainty,true);
+              loggit->send("set measure " + String(ans) + "\n");
+            break;   
+            case EstimationUncertainty:
+              estimation_uncertainty = sh.get_f_value();
+              NVS.setFloat("est_unc",(float)estimation_uncertainty,true);
+            break;     
+            case Noise:
+              noise = sh.get_f_value();
+              NVS.setFloat("noise",(float)noise,true);
+            break;       
             case Debug:
               if ( value == 0 )
                 DEBUG_ON = false;
@@ -567,6 +641,9 @@ String command(String command)
       answer = answer + "\nSamples for Ave : " + String(sample_average);
       answer = answer + "\nLoop Delay      : " + String(loop_delay);
       answer = answer + "\nReset Counter   : " + String(number_of_resets)+ "\n";
+      answer = answer + "\nMeas unc        : " + String(measurement_uncertainty)+ "\n";
+      answer = answer + "\nEstimation unc  : " + String(estimation_uncertainty)+ "\n";
+      answer = answer + "\nNoise           : " + String(noise)+ "\n";
       answer = answer + "\nDebug           : " + String(DEBUG_ON)+ "\n";
     }
     break;

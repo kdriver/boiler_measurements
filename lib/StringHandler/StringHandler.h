@@ -24,6 +24,7 @@ class StringHandler {
         unsigned int get_command(void);
         unsigned int get_attribute(void);
         unsigned int get_value(void);
+        float get_f_value(void);
     private:
         char string_copy[501];
         char tokens[5][100];
@@ -36,6 +37,7 @@ class StringHandler {
         unsigned int num_attributes;
         unsigned int num_tokens;
         unsigned int the_value;
+        float the_f_value;
     
     unsigned int  value;
 };

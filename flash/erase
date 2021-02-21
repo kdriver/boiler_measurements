@@ -1,0 +1,2 @@
+esptool.py --chip esp32 --port /dev/cu.SLAB_USBtoUART erase_flash
+
