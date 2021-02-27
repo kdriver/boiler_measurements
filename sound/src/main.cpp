@@ -14,7 +14,7 @@
 #include <ArduinoNvs.h>
 #include <SimpleKalmanFilter.h>
 
-#define MDNS_NAME "btest"
+#define MDNS_NAME "boiler"
 
 #define DEVICE "ESP32"
 #include <InfluxDbClient.h>
@@ -59,7 +59,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define OFF_THRESHOLD 300
 #define WATCHDOG_INTERVAL 300
 
-SimpleKalmanFilter simpleKalmanFilter(2, 2, 0.01);
+SimpleKalmanFilter *simpleKalmanFilter;
+//(2, 2, 0.01);
 
 unsigned long epoch;
 unsigned long time_now;
@@ -135,8 +136,8 @@ void report_event_to_influx(Point &p,unsigned int status, unsigned int time_inte
 {
   String payload; 
   //int response
-  loggit->send("suppress influx reporting event\n");
-  return;
+  //loggit->send("suppress influx reporting event\n");
+  //return;
   p.clearFields();
   p.addField("interval",(float)time_interval);
   p.addField("interval_mins",(float)(time_interval/60));
@@ -155,8 +156,8 @@ void report_event_to_influx(Point &p,unsigned int status, unsigned int time_inte
 }
 void diag_influx(Point &p, unsigned int sound, unsigned int boiler_status)
 {
-  loggit->send("suppress influx reporting diag\n");
-  return;
+  //loggit->send("suppress influx reporting diag\n");
+  //return;
   p.clearFields();
   p.addField("value",(float)sound);
   p.addField("boiler_on",(float)(boiler_status==BOILER_ON?1:0));
@@ -199,8 +200,12 @@ unsigned int measure() {
   }
   // work out the peak to peak value measure over the interval
   pp = max_val - min_val;
-  ppk = simpleKalmanFilter.updateEstimate(pp);
-
+  ppk = simpleKalmanFilter->updateEstimate(pp);
+  if ( ppk > 10000 )
+  {
+    ppk=2000;
+    loggit->send("suppressed large kalman result of "+String(ppk)+ " to 2000" );
+  }
   // record it in the history
   portENTER_CRITICAL_ISR(&timerMux);
   pp_history->add(pp);
@@ -351,6 +356,7 @@ restart_counter=0;
     String the_kalman_estimate;
     String labels;
    
+   
     int length = 0;
     the_kalman_estimate = ppk_history->list();
     the_data = pp_history->list();
@@ -373,6 +379,7 @@ restart_counter=0;
     String inputMessage;
     String inputParam;
     bool ans;
+    bool new_kalman = false;
     // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
     inputMessage = "No message sent";
     inputParam = "none";
@@ -414,6 +421,7 @@ restart_counter=0;
       measurement_uncertainty = inputMessage.toFloat();
       ans = NVS.setFloat("meas_unc",measurement_uncertainty,true);
       loggit->send("set measurement uncertainty to " + String(measurement_uncertainty) + " result " + String(ans?"OK\n":"Failed\n"));
+      new_kalman = true;
     }
     if (request->hasParam(PARAM_INPUT_7)) {
       inputMessage = request->getParam(PARAM_INPUT_7)->value();
@@ -421,6 +429,7 @@ restart_counter=0;
       estimation_uncertainty = inputMessage.toFloat();
       ans = NVS.setFloat("est_unc",estimation_uncertainty,true);
       loggit->send("set estimation uncertainty to " + String(estimation_uncertainty) + " result " + String(ans?"OK\n":"Failed\n"));
+      new_kalman=true;
     }
     if (request->hasParam(PARAM_INPUT_8)) {
       inputMessage = request->getParam(PARAM_INPUT_8)->value();
@@ -428,6 +437,13 @@ restart_counter=0;
       noise = inputMessage.toFloat();
       ans = NVS.setFloat("noise",noise,true);
       loggit->send("set noise  to " + String(noise) + " result " + String(ans?"OK\n":"Failed\n"));
+      new_kalman = true;
+    }
+    if ( new_kalman )
+    {
+        simpleKalmanFilter = new SimpleKalmanFilter(measurement_uncertainty,estimation_uncertainty,noise);
+        loggit->send("new kalmanfilter ( " + String(measurement_uncertainty) + "," + String(estimation_uncertainty)+ "," + String(noise) + ")");
+        new_kalman = false;
     }
     Serial.println(inputMessage);
     request->send(200, "text/html", "HTTP GET request sent to your ESP on input field (" 
@@ -438,7 +454,8 @@ restart_counter=0;
   server.begin();  
   int udp = control.begin(8788);
   Serial.println("start UDP server on port 8788 " + String(udp));
-  
+  simpleKalmanFilter = new SimpleKalmanFilter(measurement_uncertainty,estimation_uncertainty,noise);
+  loggit->send("kalmanfilter ( " + String(measurement_uncertainty) + "," + String(estimation_uncertainty)+ "," + String(noise) + ")");
   loggit->send("up and running\n");
   loggit->send("command interface on UDP " + String(COMMAND_PORT) + "\n");
   String influx_url;

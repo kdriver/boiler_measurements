@@ -27,7 +27,7 @@ const char graph[] PROGMEM = R"rawliteral(
             },
             {
               label: 'kalman ',
-              borderColor: 'yellow',
+              borderColor: 'red',
                data: %s
             }
             ]

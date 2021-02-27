@@ -1,0 +1,9 @@
+PORT=/dev/ttyUSB0
+FILENAME=keith.bin
+echo "READ"
+esptool.py --chip esp32 --baud 460800 --port $PORT read_flash 0x0 0x400000 $FILENAME
+echo "ERASE"
+esptool.py --chip esp32 --baud 460800 --port $PORT erase_flash
+echo "WRITE"
+esptool.py --chip esp32 --baud 460800 --port $PORT  write_flash --flash_freq 80m 0x0  $FILENAME
+
