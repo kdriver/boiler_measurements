@@ -6,7 +6,7 @@
 class UDPLogger {
     public:
         UDPLogger( const char *ip, unsigned short int dest_port );
-        void init(void);
+        void init(String s = "noname");
         void send(String s);
     private:
         char remote[100];

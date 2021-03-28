@@ -31,7 +31,9 @@
 	"settings": {
 		"files.associations": {
 			"algorithm": "cpp",
-			"functional": "cpp"
+			"functional": "cpp",
+			"bitset": "cpp",
+			"*.tcc": "cpp"
 		}
 	}
 }

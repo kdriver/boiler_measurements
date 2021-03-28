@@ -130,7 +130,7 @@ void setup(void){
   String logging_host = String("192.168.0.3");
   #endif
   loggit = new UDPLogger(logging_host.c_str(),(unsigned short int)8788);
-  loggit->init();
+  loggit->init(MDNS_NAME);
   
   String address = WiFi.localIP().toString();
   Serial.println(""); 

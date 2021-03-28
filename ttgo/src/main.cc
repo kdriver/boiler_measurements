@@ -192,6 +192,8 @@ bool  first=false;
 unsigned long full_time = MINUTES(5);
 int how_long_left = 0;
 
+enum orientation { LANDSCAPE, PORTRAIT };
+
 void reverse_clicked(Button2 & b )
 {
     loggit->send("Button1 clicked\n");
@@ -216,6 +218,7 @@ void button_loop()
 void setup()
 {
     unsigned long the_time=millis();
+    orientation orient = LANDSCAPE;
     weather_time = the_time;
     plane_time = the_time;
     Serial.begin(9600);

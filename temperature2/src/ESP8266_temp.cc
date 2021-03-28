@@ -23,7 +23,7 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-#define NAME "snug"
+#define NAME "garage"
 Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -82,7 +82,7 @@ void connect_to_wifi()
 #endif
     Serial.println(logging_server.toString());
     loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)8788);
-    loggit->init();
+    loggit->init(NAME);
 }
 
 void setup() {

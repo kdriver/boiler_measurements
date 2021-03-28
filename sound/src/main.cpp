@@ -179,7 +179,8 @@ History *ppk_history = new History(500);
 void IRAM_ATTR sound();
 void IRAM_ATTR measureit();
 unsigned long measure_interval = sample_period;
-unsigned int measure() {
+unsigned int measurements[2];
+unsigned int * measure() {
   // called on interrupt
   unsigned int max_val = 0;
   unsigned int min_val = 1024;
@@ -201,6 +202,8 @@ unsigned int measure() {
   // work out the peak to peak value measure over the interval
   pp = max_val - min_val;
   ppk = simpleKalmanFilter->updateEstimate(pp);
+  measurements[0] = pp;
+  measurements[1] = ppk;
   if ( ppk > 10000 )
   {
     ppk=2000;
@@ -211,7 +214,7 @@ unsigned int measure() {
   pp_history->add(pp);
   ppk_history->add(ppk);
   portEXIT_CRITICAL_ISR(&timerMux);
-  return pp;
+  return measurements;
 }
 
 void p_lcd(String s,unsigned int x,unsigned int y)
@@ -297,7 +300,7 @@ restart_counter=0;
     logging_server = MDNS.queryHost("piaware");
     Serial.println(logging_server.toString());
     loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)LOGGIT_PORT);
-    loggit->init();
+    loggit->init(MDNS_NAME);
 
     bool ans;
     ans = NVS.begin("boiler");
@@ -441,6 +444,7 @@ restart_counter=0;
     }
     if ( new_kalman )
     {
+        delete simpleKalmanFilter;
         simpleKalmanFilter = new SimpleKalmanFilter(measurement_uncertainty,estimation_uncertainty,noise);
         loggit->send("new kalmanfilter ( " + String(measurement_uncertainty) + "," + String(estimation_uncertainty)+ "," + String(noise) + ")");
         new_kalman = false;
@@ -514,10 +518,11 @@ unsigned int choose_scale(unsigned int max)
 
 bool read_analogue()
 {
-    int ma;
+    unsigned int ma;
     bool detected_on = false;
+    unsigned int *measurement_results;
 
-      measure();
+      measurement_results = measure();
       ma = pp_history->moving_average(sample_average);
       if  ( ma > boiler_on_threshold_1 )
       {
