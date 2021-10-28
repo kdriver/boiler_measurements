@@ -26,6 +26,9 @@
 		},
 		{
 			"path": "ttgo"
+		},
+		{
+			"path": "temperature3"
 		}
 	],
 	"settings": {

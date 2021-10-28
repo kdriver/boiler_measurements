@@ -46,4 +46,5 @@ void UDPLogger::send(String s )
     the_line.getBytes(tx_buffer,sizeof(tx_buffer));
     Udp.write(tx_buffer,the_line.length());
     Udp.endPacket();
+    Udp.flush();
 }

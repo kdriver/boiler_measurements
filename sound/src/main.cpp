@@ -28,18 +28,17 @@ enum Command  { Get,Set,Help,Status,Reset};
 enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,MeasurementUncertainty,EstimationUncertainty,Noise,ResetCounter,Debug };
 
 #include <StringHandler.h>
-CommandSet sound_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
+CommandSet sound_commands[] = {{"GET", Get, 2}, {"SET", Set, 4}, {"HELP", Help, 1}, {"STATUS", Status, 1}, {"RESET", Reset, 1}};
 AttributeSet sound_attributes[] = {
-     {"ON_THRESHOLD",OnThreshold},
-     {"LOOP_DELAY",LoopDelay},
-     {"SAMPLE_PERIOD",SamplePeriod},
-     {"SAMPLES_FOR_AVERAGE",SamplesForAverage},
-     {"MEASUREMENT_UNCERTAINTY",MeasurementUncertainty},
-     {"ESTIMATION_UNCERTAINTY",EstimationUncertainty},
-     {"NOISE",Noise},
-     {"RESET_COUNTER",ResetCounter},
-     {"DEBUG",Debug}
-     };
+    {"ON_THRESHOLD", OnThreshold},
+    {"LOOP_DELAY", LoopDelay},
+    {"SAMPLE_PERIOD", SamplePeriod},
+    {"SAMPLES_FOR_AVERAGE", SamplesForAverage},
+    {"MEASUREMENT_UNCERTAINTY", MeasurementUncertainty},
+    {"ESTIMATION_UNCERTAINTY", EstimationUncertainty},
+    {"NOISE", Noise},
+    {"RESET_COUNTER", ResetCounter},
+    {"DEBUG", Debug}};
 
 const char compile_date[] = __DATE__ " " __TIME__;
 WiFiUDP  control;
@@ -110,39 +109,17 @@ void handleNotFound();
 IPAddress logging_server;
 UDPLogger *loggit;
 
-#ifdef REDUNDENT
-int post_it(String payload ,String db)
+void report_event_to_influx(Point &p, unsigned int status, unsigned int time_interval)
 {
-    HTTPClient http;
-    int response;
-    //Serial.println("post to influx\n");
-    String target;
-    target= "http://" + logging_server.toString() + ":8086/write?db="+db;
-    http.begin(target);
-    http.addHeader("Content-Type","text/plain");
-    //Serial.print(target + " : ");
-    //Serial.println(payload);
-    response = http.POST(payload);
-
-    loggit->send(db + " " + payload + "\n");
-    if ( response > 250 )
-      loggit->send("InfluxDb POST error response " + String(response) + "\n");
-
-    http.end();
-    return response;
-}
-#endif
-void report_event_to_influx(Point &p,unsigned int status, unsigned int time_interval)
-{
-  String payload; 
+  String payload;
   //int response
   //loggit->send("suppress influx reporting event\n");
   //return;
   p.clearFields();
-  p.addField("interval",(float)time_interval);
-  p.addField("interval_mins",(float)(time_interval/60));
-  p.addField("interval",(float)(time_interval%60));
-  p.addField("bolier_on",(float)status);
+  p.addField("interval", (float)time_interval);
+  p.addField("interval_mins", (float)(time_interval / 60));
+  p.addField("interval", (float)(time_interval % 60));
+  p.addField("bolier_on", (float)status);
 
   data_client->writePoint(p);
 
@@ -152,23 +129,21 @@ void report_event_to_influx(Point &p,unsigned int status, unsigned int time_inte
   //payload = payload + ",boiler_on=" + String(status);
   //post_it(payload,"boiler_measurements");
   //Serial.print(response);
-  
 }
 void diag_influx(Point &p, unsigned int sound, unsigned int boiler_status)
 {
   //loggit->send("suppress influx reporting diag\n");
   //return;
   p.clearFields();
-  p.addField("value",(float)sound);
-  p.addField("boiler_on",(float)(boiler_status==BOILER_ON?1:0));
+  p.addField("value", (float)sound);
+  p.addField("boiler_on", (float)(boiler_status == BOILER_ON ? 1 : 0));
   data_client->writePoint(p);
-  
+
   //String payload;
   //payload = "boiler_sound value=" + String(sound);
   //payload = payload + ",boiler_on=" + String(boiler_status==BOILER_ON?1:0);
   //post_it(payload,"boiler_measurements");
 }
-
 
 hw_timer_t *timer=NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -180,6 +155,7 @@ void IRAM_ATTR sound();
 void IRAM_ATTR measureit();
 unsigned long measure_interval = sample_period;
 unsigned int measurements[2];
+
 unsigned int * measure() {
   // called on interrupt
   unsigned int max_val = 0;
@@ -228,48 +204,50 @@ void p_lcd(String s,unsigned int x,unsigned int y)
 /*
 SETUP=================================================================================================
 */
-void setup() {
-char prog[] = {'|','/','-','\\'};
-int rot=0;
-String c;
+void setup()
+{
+  char prog[] = {'|', '/', '-', '\\'};
+  int rot = 0;
+  String c;
 
-Serial.begin(9600);
+  Serial.begin(9600);
 
-
-if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+  { // Address 0x3C for 128x32
     Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
+    for (;;)
+      ; // Don't proceed, loop forever
   }
 
-Serial.println("I'm alive");
-Serial.println("Built on : " + String(compile_date));
-display.clearDisplay();
-p_lcd("Searching for WiFi",0,0);
-unsigned int restart_counter;
-restart_counter=0; 
+  Serial.println("I'm alive");
+  Serial.println("Built on : " + String(compile_date));
+  display.clearDisplay();
+  p_lcd("Searching for WiFi", 0, 0);
+  unsigned int restart_counter;
+  restart_counter = 0;
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(100);
     Serial.print(".");
-    c=prog[rot];
-    rot = rot + 1 ;
-    if ( rot == sizeof(prog))
+    c = prog[rot];
+    rot = rot + 1;
+    if (rot == sizeof(prog))
       rot = 0;
-    display.writeFillRect(0,8,5,16,SSD1306_BLACK);
-    p_lcd(c,0,8);
-    p_lcd(String(restart_counter),0,16);
+    display.writeFillRect(0, 8, 5, 16, SSD1306_BLACK);
+    p_lcd(c, 0, 8);
+    p_lcd(String(restart_counter), 0, 16);
     restart_counter = restart_counter + 1;
-    if ( restart_counter == 500 )
+    if (restart_counter == 500)
     {
       unsigned int nr;
       nr = number_of_resets + 1;
-      NVS.setInt("restart_counter",nr);
+      NVS.setInt("restart_counter", nr);
       ESP.restart();
     }
   }
-  
-  
+
   p_lcd("i'm alive",0,0);   
 
   address = WiFi.localIP().toString();
@@ -506,34 +484,32 @@ float moving_average;
 
 unsigned int choose_scale(unsigned int max)
 {
-  unsigned int scale=500;
+  unsigned int scale = 500;
 
   scale = max * 1.5;
 
-  if  ( scale < 100 )
+  if (scale < 100)
     scale = 100;
-       return scale;
+  return scale;
 }
-
 
 bool read_analogue()
 {
-    unsigned int ma;
-    bool detected_on = false;
-    unsigned int *measurement_results;
+  unsigned int ma;
+  bool detected_on = false;
 
-      measurement_results = measure();
-      ma = pp_history->moving_average(sample_average);
-      if  ( ma > boiler_on_threshold_1 )
-      {
-        detected_on = true;
-      }
-      else
-      {
-          detected_on = false;
-      }
-      
-    return  detected_on ;
+  measure();
+  ma = pp_history->moving_average(sample_average);
+  if (ma > boiler_on_threshold_1)
+  {
+    detected_on = true;
+  }
+  else
+  {
+    detected_on = false;
+  }
+
+  return detected_on;
 }
 String command(String command)
 {
@@ -691,111 +667,110 @@ String command(String command)
     break;
   }
   return answer;
-  
-   
 }
-void handleUDPPackets(void) {
+void handleUDPPackets(void)
+{
   char packet[500];
   int cb = control.parsePacket();
   String text;
-  if (cb) {
+  if (cb)
+  {
     int length;
-    length  = control.read(packet, sizeof(packet));
+    length = control.read(packet, sizeof(packet));
     String myData = "";
-    for(int i = 0; i < length; i++) {
+    for (int i = 0; i < length; i++)
+    {
       myData += (char)packet[i];
     }
     Serial.println(myData);
     text = command(myData);
     IPAddress target = control.remoteIP();
-    control.beginPacket(target,control.remotePort());
+    control.beginPacket(target, control.remotePort());
     String answer = "boiler ldr > " + text + "\n";
     control.print(answer);
     control.endPacket();
-
   }
 }
-void loop() {
-bool boiler_on = false;
-        handleUDPPackets();
-        delay(loop_delay);
-        display.clearDisplay();
-        String s;
-        int ma;
-        time_now = millis();
-        boiler_on = read_analogue();
-        
-        if ( (time_now - last_time)  >  2000 )
-        {
-          if ( (time_now - clean_display_time ) > (300*1000))
-          {
-            // wipe the display
-            display.clearDisplay();
-            clean_display_time = time_now; 
-          }
-          if (WiFi.status() == WL_CONNECTED)
-            p_lcd("WiFi OK",72,0);
-          else
-          {
-            p_lcd("No WiFi",72,0);
-            reset = true;
-          }
-          p_lcd(address + " " + String(time_now/1000),0,8);
-          if ( boiler_status == true )
-          {
-            p_lcd("BOILER ON ",0,0);
-            p_lcd("                  ",0,16);
-            p_lcd("ON for " + String((time_now - boiler_switched_on_time)/1000),0,16);
-          }
-          else
-          {
-            p_lcd("BOILER OFF",0,0);
-            p_lcd("was ON for " + String(on_for),0,16);
-          }
-           p_lcd("threshold " + String(boiler_on_threshold_1),0,24);
-           ma = pp_history->moving_average(sample_average);
-          // history->add(abs_average);
-           diag_influx(diag,ma,boiler_status);
-          
-          last_time = time_now;
-        
-          if ( reset == true )
-          {
-              reset_count = reset_count - 1;
-              Serial.println("Counting down to reset " + String(reset_count));
-              if ( reset_count == 0 )
-              {
-                unsigned int nr;
-                nr = number_of_resets + 1 ;
-                NVS.setInt("restart_counter",nr);
-                ESP.restart();
-              }
-          }
-        }
+void loop()
+{
+  bool boiler_on = false;
+  handleUDPPackets();
+  delay(loop_delay);
+  display.clearDisplay();
+  String s;
+  int ma;
+  time_now = millis();
+  boiler_on = read_analogue();
 
-        if ( (boiler_status == BOILER_OFF) && (boiler_on == true) )
-        {
-            String text;
-            text = String("Boiler switched ON \n ") ;
-            loggit->send(text);
-            report_event_to_influx(boiler_s,BOILER_ON,0);
-            boiler_status = BOILER_ON;
-            boiler_switched_on_time = time_now;
-          
-        }
-        if ( (boiler_status == BOILER_ON)  && ( boiler_on == false ) )
-        {
-            unsigned int  interval;
-            char output[70];
-            interval = (time_now - boiler_switched_on_time)/1000;
-            on_for = interval;
-            if ( interval > 5 )
-            {
-              report_event_to_influx(boiler_s,BOILER_OFF,interval);
-            }
-            boiler_status = BOILER_OFF;
-            sprintf(output,"boiler was on for %d seconds \n",interval);
-            loggit->send(output);
-        }
+  if ((time_now - last_time) > 2000)
+  {
+    if ((time_now - clean_display_time) > (300 * 1000))
+    {
+      // wipe the display
+      display.clearDisplay();
+      clean_display_time = time_now;
+    }
+    if (WiFi.status() == WL_CONNECTED)
+      p_lcd("WiFi OK", 72, 0);
+    else
+    {
+      p_lcd("No WiFi", 72, 0);
+      reset = true;
+    }
+    p_lcd(address + " " + String(time_now / 1000), 0, 8);
+    if (boiler_status == true)
+    {
+      p_lcd("BOILER ON ", 0, 0);
+      p_lcd("                  ", 0, 16);
+      p_lcd("ON for " + String((time_now - boiler_switched_on_time) / 1000), 0, 16);
+    }
+    else
+    {
+      p_lcd("BOILER OFF", 0, 0);
+      p_lcd("was ON for " + String(on_for), 0, 16);
+    }
+    p_lcd("threshold " + String(boiler_on_threshold_1), 0, 24);
+    ma = pp_history->moving_average(sample_average);
+    // history->add(abs_average);
+    diag_influx(diag, ma, boiler_status);
 
-}      
+    last_time = time_now;
+
+    if (reset == true)
+    {
+      reset_count = reset_count - 1;
+      Serial.println("Counting down to reset " + String(reset_count));
+      if (reset_count == 0)
+      {
+        unsigned int nr;
+        nr = number_of_resets + 1;
+        NVS.setInt("restart_counter", nr);
+        ESP.restart();
+      }
+    }
+  }
+
+  if ((boiler_status == BOILER_OFF) && (boiler_on == true))
+  {
+    String text;
+    text = String("Boiler switched ON \n ");
+    loggit->send(text);
+    report_event_to_influx(boiler_s, BOILER_ON, 0);
+    boiler_status = BOILER_ON;
+    boiler_switched_on_time = time_now;
+  }
+  if ((boiler_status == BOILER_ON) && (boiler_on == false))
+  {
+    unsigned int interval;
+    char output[70];
+    interval = (time_now - boiler_switched_on_time) / 1000;
+    on_for = interval;
+    if (interval > 5)
+    {
+      report_event_to_influx(boiler_s, BOILER_OFF, interval);
+    }
+    boiler_status = BOILER_OFF;
+    sprintf(output, "boiler was on for %d seconds \n", interval);
+    loggit->send(output);
+  }
+}

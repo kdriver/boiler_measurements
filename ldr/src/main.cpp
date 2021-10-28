@@ -82,10 +82,13 @@ void tell_influx(BoilerState status, unsigned int time_interval)
   measurement.addValue("interval_secs",time_interval%60);
 
   if ( status == boiler_is_off )
+  {
     measurement.addValue("value",0);
+  }
   else
+  {
     measurement.addValue("value",1);
-
+  }
     
     influx.write(measurement);
   

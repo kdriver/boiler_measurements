@@ -235,7 +235,10 @@ void setup()
     loggit->init();
 
     tft.init();
-    tft.setRotation(1); // Landscape orientation, USB at bottom right
+    if ( orient == LANDSCAPE )
+        tft.setRotation(1); // Landscape orientation, USB at bottom right
+    else 
+        tft.setRotation(0); // Landscape orientation, USB at bottom right
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_RED,TFT_BLACK);
     tft.setCursor(0,50);
@@ -321,6 +324,7 @@ void loop(){
     seconds_left = (full_time-(time_now-weather_time))/1000;
     mins = floor(seconds_left/60);
     secs =  seconds_left % 60;
+    
     if ( (secs != last_secs) && (time_now > 5000 ))
     {   
         last_secs = secs;
