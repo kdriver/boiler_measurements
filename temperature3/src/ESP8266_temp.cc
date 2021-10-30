@@ -1,18 +1,21 @@
 
 //#include <Arduino.h>
+//  define battery if this is montoring the 12V battery voltage as well as the temp
+#define BATTERY 1
+#define BLUE_LED 2
+
 #ifndef ESP32
+// ESP8266
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #define ONE_WIRE_BUS D2
-#define BLUE_LED 2
 #else
-#define BLUE_LED 2
+//ESP32
 #include <WiFi.h>
 #include <ESPmDNS.h>
 //#define ONE_WIRE_BUS GPIO_NUM_4
 #define ONE_WIRE_BUS 4
 #define DEVICE "ESP32"
-
 #define Influxdb InfluxDBClient
 #endif 
 
@@ -23,8 +26,10 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-#define NAME "adam"
+
+#define NAME "garage"
 #define US_5_MINUTES 300*1000000
+
 Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -50,6 +55,14 @@ const char* password = WIFIPASSWORD;  //Your Wifi Password
 UDPLogger *loggit;
 
 int loop_counter = 2;
+
+
+// to measure the 12V battery voltage
+unsigned int analog = A0;
+float input_voltage;
+float battery_voltage;
+float resistor_ratio = 5.7;
+
 
 void connect_to_wifi()
 {
@@ -105,6 +118,17 @@ void send_measurement(float value)
   loggit->send(temperature.toLineProtocol() + "\n");
 }
 
+void send_measurement_voltage(float battery_v)
+{
+  temperature.clearFields();
+
+
+  temperature.addField("voltage",battery_v);
+  influx->writePoint(temperature);
+
+  loggit->send(temperature.toLineProtocol() + "\n");
+}
+
 float current_temp = 0.0;
 
 //DS18B20 code
@@ -118,7 +142,8 @@ float getTemperature() {
     delay(100);
     counter = counter + 1;
   } while (temp == 85.0 || temp == (-127.0));
-  Serial.print(temp); Serial.println(" degrees C");
+  Serial.print(temp); 
+  Serial.println(" degrees C");
   return temp;
 }
 
@@ -162,12 +187,19 @@ void setup() {
 
   float temperatureC = getTemperature();
   send_measurement(temperatureC);
+
+#ifdef BATTERY
+    float reading = analogRead(analog)*1.0;
+    loggit->send("raw read " + String(reading)+ "\n");
+    input_voltage = reading/1023.0 * 3.3;
+    battery_voltage = input_voltage * resistor_ratio;
+    send_measurement_voltage(battery_voltage);
+#endif
+
   flash_the_LED();
  
 }
   
-
-
 
 unsigned long old_time=0;
 void loop() {
