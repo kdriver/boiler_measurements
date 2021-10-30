@@ -23,7 +23,7 @@
 #include "UDPLogger.h"
 
 #include <InfluxDbClient.h>
-#define NAME "lounge32"
+#define NAME "adam"
 #define US_5_MINUTES 300*1000000
 Point temperature(NAME);
 
@@ -176,6 +176,6 @@ void loop() {
     Serial.flush();
     esp_deep_sleep_start();
 #else
-    ESP.deepSleep(60e6);
+    ESP.deepSleep(US_5_MINUTES);
 #endif
 }
