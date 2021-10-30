@@ -1,5 +1,6 @@
 
 //#include <Arduino.h>
+#define BATTERY 1
 #ifndef ESP32
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
@@ -47,6 +48,12 @@ unsigned long int reset_time ;
 const char* ssid = "cottage"; //your WiFi Name
 const char* password = WIFIPASSWORD;  //Your Wifi Password
 
+#ifdef BATTERY
+unsigned int analog = A0;
+float input_voltage;
+float battery_voltage;
+float resistor_ratio = 5.7;
+#endif
 UDPLogger *loggit;
 
 void connect_to_wifi()
@@ -66,8 +73,6 @@ void connect_to_wifi()
       Serial.println("\nretry Wifi\n");
     }
   }
-
-
 
   if (!MDNS.begin(NAME)) {
         Serial.println("Error setting up MDNS responder!");
@@ -124,12 +129,22 @@ void setup() {
   
 }
 
-void send_measurement(float value)
+void send_measurement(float the_temp)
 {
    temperature.clearFields();
   // Report RSSI of currently connected network
   temperature.addField("rssi", WiFi.RSSI());
-  temperature.addField("temp",value);
+  temperature.addField("temp",the_temp);
+  influx->writePoint(temperature);
+
+  loggit->send(temperature.toLineProtocol() + "\n");
+}
+void send_measurement_voltage(float battery_v)
+{
+  temperature.clearFields();
+
+
+  temperature.addField("voltage",battery_v);
   influx->writePoint(temperature);
 
   loggit->send(temperature.toLineProtocol() + "\n");
@@ -166,12 +181,13 @@ void processWebRequest(WiFiClient client)
   client.println("</p>") ;
   client.flush(); 
 }
-void flash_the_LED() {
+void flash_the_LED(void) {
   digitalWrite(BLUE_LED,LOW);
   delay(100);
   digitalWrite(BLUE_LED,HIGH);
 }
 unsigned long old_time=0;
+
 void loop() {
   unsigned long int the_time;
   float temperatureC;
@@ -191,6 +207,13 @@ void loop() {
     temperatureC = getTemperature();
     send_measurement(temperatureC);
     current_temp = temperatureC;
+  #ifdef BATTERY
+    float reading = analogRead(analog)*1.0;
+    loggit->send("raw read " + String(reading)+ "\n");
+    input_voltage = reading/1023.0 * 3.3;
+    battery_voltage = input_voltage * resistor_ratio;
+    send_measurement_voltage(battery_voltage);
+  #endif
     flash_the_LED();
   }
   if (WiFi.status() != WL_CONNECTED)
