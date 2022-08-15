@@ -300,22 +300,22 @@ void setup()
     else
       loggit->send("read parameters from NVRAM\n");
 
-      boiler_on_threshold = NVS.getInt("b_on_thresh");
-      loop_delay = NVS.getInt("loop_delay");
-      sample_period = NVS.getInt("sample_period");
-      sample_average = NVS.getInt("sample_average");
-      number_of_resets = NVS.getInt("reset_counter");
-      measurement_uncertainty = NVS.getFloat("meas_unc");
-      estimation_uncertainty = NVS.getFloat("est_unc");
-      noise = NVS.getFloat("noise");
+    boiler_on_threshold = NVS.getInt("b_on_thresh");
+    loop_delay = NVS.getInt("loop_delay");
+    sample_period = NVS.getInt("sample_period");
+    sample_average = NVS.getInt("sample_average");
+    number_of_resets = NVS.getInt("reset_counter");
+    measurement_uncertainty = NVS.getFloat("meas_unc");
+    estimation_uncertainty = NVS.getFloat("est_unc");
+    noise = NVS.getFloat("noise");
 
-      if ( number_of_resets > 1000 )
+    if ( number_of_resets > 1000 )
       {
         NVS.setInt("reset_counter",(uint32_t)0);
         loggit->send("reset the counter for the number of resets\n");
       }
-      pp_history->update_ma_period(sample_average);
-      boiler_on_threshold_1 = NVS.getInt("b_on_thresh1");
+    pp_history->update_ma_period(sample_average);
+    boiler_on_threshold_1 = NVS.getInt("b_on_thresh1");
 
   loggit->send(" boiler on threshold1 set to " + String(boiler_on_threshold_1) + "\n");
   loggit->send(" boiler on (unused)   set to " + String(boiler_on_threshold) + "\n");

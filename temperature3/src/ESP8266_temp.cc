@@ -1,7 +1,7 @@
 
 //#include <Arduino.h>
 //  define battery if this is montoring the 12V battery voltage as well as the temp
-#define BATTERY 1
+//#define BATTERY 1
 #define BLUE_LED 2
 
 #ifndef ESP32
@@ -27,7 +27,7 @@
 
 #include <InfluxDbClient.h>
 
-#define NAME "garage"
+#define NAME "freezer"
 #define US_5_MINUTES 300*1000000
 
 Point temperature(NAME);
@@ -197,6 +197,7 @@ void setup() {
 #endif
 
   flash_the_LED();
+  // end of code
  
 }
   
