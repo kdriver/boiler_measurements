@@ -1,0 +1,4 @@
+FILENAME=keith.bin
+echo "READ"
+esptool.py --chip esp32 --baud 460800 read_flash 0x0 0x400000 $FILENAME
+

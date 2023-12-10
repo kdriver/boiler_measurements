@@ -1,0 +1,6 @@
+FILENAME=$1
+echo "ERASE"
+esptool.py --chip esp32 --baud 460800 erase_flash
+echo "WRITE"
+esptool.py --chip esp32 --baud 460800 write_flash --flash_freq 80m 0x0  $FILENAME
+
