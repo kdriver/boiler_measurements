@@ -34,9 +34,11 @@ Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
-#define INFLUXDB_HOST "piaware.local"
-#define INFLUXDB_PORT "1337"
+#define INFLUXDB_HOST "http://piaware.local:8086"
+//#define INFLUXDB_PORT "1337"
+#define INFLUXDB_ORG "HGFC"
 #define INFLUXDB_DATABASE "boiler_measurements"
+#define INFLUXDB_TOKEN "dIWPK_EXr7F0oNVXjbHd4it6susM2krNDoMyufZJ8ZSWKReVi8duq76GGJm5jNML3lBKnexcw3zMae4XNvYsmA=="
  //if used with authentication
 #define INFLUXDB_USER 
 #define INFLUXDB_PASS
@@ -176,8 +178,8 @@ void setup() {
   
   connect_to_wifi();
   
-  influx_url = "http://" + logging_server.toString() + ":8086";
-  influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_DATABASE);
+  influx_url = INFLUXDB_HOST ;
+  influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_ORG,INFLUXDB_DATABASE,INFLUXDB_TOKEN);
 
   Serial.println("Built on " + String(compile_date)+ "\n");
   Serial.print("Connected to cottage : IP Address ");
