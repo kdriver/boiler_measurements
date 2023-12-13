@@ -27,7 +27,7 @@
 
 #include <InfluxDbClient.h>
 
-#define NAME "freezer"
+#define NAME "desk"
 #define US_5_MINUTES 300*1000000
 
 Point temperature(NAME);
@@ -36,7 +36,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 #define INFLUXDB_HOST "http://piaware.local:8086"
 //#define INFLUXDB_PORT "1337"
-#define INFLUXDB_ORG "HGFC"
+#define INFLUXDB_ORG "59edb8553f90a315"
 #define INFLUXDB_DATABASE "boiler_measurements"
 #define INFLUXDB_TOKEN "dIWPK_EXr7F0oNVXjbHd4it6susM2krNDoMyufZJ8ZSWKReVi8duq76GGJm5jNML3lBKnexcw3zMae4XNvYsmA=="
  //if used with authentication
@@ -115,9 +115,16 @@ void send_measurement(float value)
   // Report RSSI of currently connected network
   temperature.addField("rssi", WiFi.RSSI());
   temperature.addField("temp",value);
-  influx->writePoint(temperature);
+  bool answer = influx->writePoint(temperature);
 
-  loggit->send(temperature.toLineProtocol() + "\n");
+  if (!answer)
+  {
+    Serial.print(influx->getLastErrorMessage());
+    Serial.print("Failed to send temp to influx");
+    loggit->send("error sending temp to influx");
+  }
+  else
+    loggit->send(temperature.toLineProtocol() + "\n");
 }
 
 void send_measurement_voltage(float battery_v)
@@ -153,6 +160,9 @@ void flash_the_LED() {
   digitalWrite(BLUE_LED,LOW);
   delay(100);
   digitalWrite(BLUE_LED,HIGH);
+  delay(100);
+  digitalWrite(BLUE_LED,LOW);
+
 }
 
 void setup() {
@@ -179,13 +189,23 @@ void setup() {
   connect_to_wifi();
   
   influx_url = INFLUXDB_HOST ;
-  influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_ORG,INFLUXDB_DATABASE,INFLUXDB_TOKEN);
+  influx = new InfluxDBClient(INFLUXDB_HOST,INFLUXDB_ORG,INFLUXDB_DATABASE,INFLUXDB_TOKEN);
 
   Serial.println("Built on " + String(compile_date)+ "\n");
-  Serial.print("Connected to cottage : IP Address ");
+  Serial.print(" InfluxDB URL ");
+  Serial.println( INFLUXDB_HOST);
 
+  if (influx->validateConnection()) {
+    Serial.print("Connected to InfluxDB: ");
+    Serial.println(influx->getServerUrl());
+  } else {
+    Serial.print("InfluxDB connection failed: ");
+    Serial.println(influx->getLastErrorMessage());
+  }
  
   DS18B20.begin();
+
+  Serial.println("init the dallas temp device");
 
   float temperatureC = getTemperature();
   send_measurement(temperatureC);
@@ -206,6 +226,7 @@ void setup() {
 
 unsigned long old_time=0;
 void loop() {
+  
 #ifdef ESP32
     esp_sleep_enable_timer_wakeup(US_5_MINUTES);
     Serial.flush();
@@ -213,4 +234,17 @@ void loop() {
 #else
     ESP.deepSleep(US_5_MINUTES);
 #endif
+
+/*
+ unsigned long now = millis();
+ if (( now - old_time ) > 10000 )
+ {
+   old_time = now;
+   flash_the_LED();
+   float temperatureC = getTemperature();
+   send_measurement(temperatureC);
+   
+ }
+ */
+
 }
