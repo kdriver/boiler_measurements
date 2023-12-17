@@ -5,11 +5,11 @@
 
 class UDPLogger {
     public:
-        UDPLogger( const char *ip, unsigned short int dest_port );
+        UDPLogger(IPAddress ip, unsigned short int dest_port );
         void init(String s = "noname");
         void send(String s);
     private:
-        char remote[100];
+        IPAddress remote;
         unsigned short int dest_port;
 };
 
