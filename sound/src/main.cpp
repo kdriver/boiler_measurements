@@ -116,7 +116,7 @@ void report_event_to_influx(Point &p, unsigned int status, unsigned int time_int
   //loggit->send("suppress influx reporting event\n");
   //return;
   p.clearFields();
-  p.addField("interval", (float)time_interval);
+  p.addField("interval_raw", (float)time_interval);
   p.addField("interval_mins", (float)(time_interval / 60));
   p.addField("interval", (float)(time_interval % 60));
   p.addField("bolier_on", (float)status);

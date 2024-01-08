@@ -6,6 +6,28 @@
 //#define BATTERY 1
 #define BLUE_LED 2
 
+#if defined(ESP32)
+#define ONE_WIRE_BUS 4
+#include <WiFiMulti.h>
+#include <ESPmDNS.h>
+
+WiFiMulti wifiMulti;
+#define DEVICE "ESP32"
+
+#elif defined(ESP8266)
+
+#define ONE_WIRE_BUS D2
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266mDNS.h>
+#include <mDNSResolver.h>
+ESP8266WiFiMulti wifiMulti;
+WiFiUDP udp;
+mDNSResolver::Resolver resolver(udp);
+
+#define DEVICE "ESP8266"
+#endif
+
+/*
 #ifndef ESP32
 // ESP8266
 #include <ESP8266WiFi.h>
@@ -23,6 +45,7 @@ mDNSResolver::Resolver resolver(udp);
 #define DEVICE "ESP32"
 #define Influxdb InfluxDBClient
 #endif 
+*/
 
 #include <HTTPClient.h>
 #include <OneWire.h>
@@ -44,14 +67,8 @@ Point temperature(NAME);
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
-#define INFLUXDB_HOST "http://piaware.local:8086"
-//#define INFLUXDB_PORT "1337"
-#define INFLUXDB_ORG "59edb8553f90a315"
-#define INFLUXDB_DATABASE "boiler_measurements"
-#define INFLUXDB_TOKEN "dIWPK_EXr7F0oNVXjbHd4it6susM2krNDoMyufZJ8ZSWKReVi8duq76GGJm5jNML3lBKnexcw3zMae4XNvYsmA=="
- //if used with authentication
-#define INFLUXDB_USER 
-#define INFLUXDB_PASS
+#include "influx_stuff.h"
+
 
 InfluxDBClient *influx;
 OneWire oneWire(ONE_WIRE_BUS);
@@ -75,13 +92,14 @@ float resistor_ratio = 5.7;
 void connect_to_wifi()
 {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  wifiMulti.addAP(ssid,password);
+  //WiFi.begin(ssid, password);
   int counter = 0;
-  while (WiFi.status() != WL_CONNECTED)
+  while (wifiMulti.run() != WL_CONNECTED)
   {
-    delay(500);
-    Serial.print(".");
+    Serial.println(".");
     counter = counter + 1;
+    /*
     if (counter > 20)
     {
       counter = 0;
@@ -89,6 +107,8 @@ void connect_to_wifi()
       WiFi.begin(ssid, password);
       Serial.println("\nretry Wifi\n");
     }
+    */
+    delay(500);
   }
   delay(10);
 
@@ -135,7 +155,6 @@ void send_measurement(float value)
 void send_measurement_voltage(float battery_v)
 {
   temperature.clearFields();
-
 
   temperature.addField("voltage",battery_v);
   influx->writePoint(temperature);
@@ -185,12 +204,13 @@ void get_configuration(void)
     {
       String payload = http.getString();
       // Serial.println(payload);
-      StaticJsonDocument<500> buffer;
+      StaticJsonDocument<1000> buffer;
 
       DeserializationError error = deserializeJson(buffer, payload);
       if (error)
       {
         Serial.println(F("Failed to read file, using default configuration"));
+        Serial.println(error.c_str());
         return;
       }
       // else
@@ -267,7 +287,7 @@ void setup()
   influx_url = INFLUXDB_HOST;
   influx = new InfluxDBClient(INFLUXDB_HOST, INFLUXDB_ORG, INFLUXDB_DATABASE, INFLUXDB_TOKEN);
 
-  Serial.println("Built on " + String(compile_date) + "\n");
+  Serial.println("Built on " + String(compile_date));
   Serial.print("InfluxDB URL ");
   Serial.println(INFLUXDB_HOST);
 
