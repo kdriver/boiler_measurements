@@ -3,3 +3,8 @@ wifi_password.h
 .vscode/
 .DS_Store/
 .DS_Store
+*.pyc
+**/flash/bin/*
+**/flash/include/*
+**/flash/lib/*
+**/*bin

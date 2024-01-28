@@ -1,18 +1,32 @@
 #include <Arduino.h>
 #include <wifi_password.h>
-#include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <ESP_EEPROM.h>
+#include <mDNSResolver.h>
+ESP8266WiFiMulti wifiMulti;
+WiFiUDP udp;
+mDNSResolver::Resolver resolver(udp);
+
 // these two lines need to be before include StringHandler
 enum Command  { Get,Set,Help,Status,Reset};
 enum Attribute { OnThreshold,OffThreshold,Debug };
 
 #include <StringHandler.h>
 #include <UDPLogger.h>
-//#include <esp_log.h>
+#include <InfluxDb.h>
+#include "influx_stuff.h"
 
-#define MDNS_NAME "ufh"
+
+String ldr_name = "underfloor";
+
+InfluxDBClient *influx;
+Point ldr_on_off("ldr_on_off");
+Point ldr_levels("ldr_levels");
+
+
+#define MDNS_NAME ldr_name
 
 IPAddress logging_server;
 UDPLogger *loggit;
@@ -23,12 +37,6 @@ WiFiUDP  control;
 ESP8266WebServer server(80);
 void handleRoot();              // function prototypes for HTTP handlers
 void handleNotFound();
-
-#include <InfluxDb.h>
-
-#define INFLUXDB_HOST "piaware.local"
-#define INFLUXDB_PORT "1337"
-#define INFLUXDB_DATABASE "boiler_measurements"
 
 CommandSet ldr_commands[] = {{"GET",Get,2},{"SET",Set,4} ,{"HELP",Help,1},{"STATUS",Status,1},{"RESET",Reset,1}};
 AttributeSet ldr_attributes[] = { {"ON_THRESHOLD",OnThreshold},{"OFF_THRESHOLD",OffThreshold},{"DEBUG",Debug}};
@@ -64,59 +72,66 @@ struct Persistent {
   unsigned int off_thresh;
 } thresholds;
 
-Influxdb influx(INFLUXDB_HOST);
-Influxdb influx_tick(INFLUXDB_HOST);
+
+
 
 unsigned int smooth_on = 0;
 unsigned int smooth_off = 0;
 
- 
-
-void tell_influx(BoilerState status, unsigned int time_interval)
+void report_boiler_status(BoilerState status, unsigned int time_interval)
 {
-  //InfluxData measurement("radiators_ldr");
-  InfluxData measurement("ufh_ldr");
-  
-  measurement.addValue("interval",time_interval);
-  measurement.addValue("interval_mins",time_interval/60);
-  measurement.addValue("interval_secs",time_interval%60);
+
+  ldr_on_off.clearFields();
+
+  ldr_on_off.addField("interval",time_interval);
+  ldr_on_off.addField("interval_mins",time_interval/60);
+  ldr_on_off.addField("interval_secs",time_interval%60);
 
   if ( status == boiler_is_off )
+    ldr_on_off.addField("status","off");
+  else
+    ldr_on_off.addField("status","on");
+  
+  ldr_on_off.addField("value",status==boiler_is_on?1:0);
+
+  bool answer = influx->writePoint(ldr_on_off);
+
+  if (!answer)
   {
-    measurement.addValue("value",0);
+    Serial.print(influx->getLastErrorMessage());
+    Serial.print("Failed to send ldr_on_off to influx");
+    loggit->send("error sending ldr_on_off to influx");
+  }
+  else
+    loggit->send(ldr_on_off.toLineProtocol());
+}
+    
+
+void report_ldr_value(String key,float value)
+{
+  ldr_levels.clearFields();
+  ldr_levels.addField(key,value);
+  
+  bool answer = influx->writePoint(ldr_levels);
+  if (!answer)
+  {
+    String txt;
+    txt = influx->getLastErrorMessage();
+    txt = ldr_name + " Failed to send to influx " + txt;
+    Serial.print(txt);
+    loggit->send(txt);
   }
   else
   {
-    measurement.addValue("value",1);
+    String lp = ldr_levels.toLineProtocol();
+    loggit->send(lp);
   }
-    
-    influx.write(measurement);
-  
-}
-
-void tick_influx(String tag1,String tag2,float value)
-{
-  InfluxData measurement("tick_ufhldr");
-  measurement.addTag("text",tag1);
-  measurement.addTag("info",tag2);
-  measurement.addValue("value",value);
-  influx_tick.write(measurement);
-}
-void report_influx(String tag1,String tag2,float value)
-{
-  InfluxData measurement("report_ufhldr");
-  measurement.addTag("text",tag1);
-  measurement.addTag("info",tag2);
-  measurement.addValue("value",value);
-  influx.write(measurement);
 }
 void setup(void){
   char text[100];
   Serial.begin(9600);
   Serial.println("\nI'm alive");
   Serial.flush();
-
-  
    
   WiFi.begin("cottage", WIFIPASSWORD);
   // Wait for connection
@@ -127,12 +142,16 @@ void setup(void){
   //logging_server = MDNS.queryHost("piaware");
   //Serial.println(logging_server.toString());
 
-  #ifdef ESP32
-  String logging_host = String("piaware.local");
-  #else
-  String logging_host = String("192.168.0.3");
-  #endif
-  loggit = new UDPLogger(logging_host.c_str(),(unsigned short int)8788);
+  ldr_on_off.addTag("sensor",ldr_name);
+  ldr_levels.addTag("sensor",ldr_name);
+
+#ifdef ESP32
+  logging_server = MDNS.queryHost("piaware");
+#else
+  logging_server = resolver.search("piaware.local");
+#endif
+ 
+  loggit = new UDPLogger(logging_server,(unsigned short int)8788);
   loggit->init(MDNS_NAME);
   
   String address = WiFi.localIP().toString();
@@ -141,17 +160,16 @@ void setup(void){
   Serial.print("Connected to cottage : IP Address ");
   Serial.println(address);
 
-if (MDNS.begin(MDNS_NAME)) {              // Start the mDNS responder for esp8266.local
-    Serial.println("mDNS responder started for host ufh.local");
-  } else {
-    Serial.println("Error setting up MDNS responder!");
+  if (MDNS.begin(ldr_name)) {              // Start the mDNS responder for esp8266.local
+      Serial.println("mDNS responder started for host " + ldr_name );
+    } else {
+      Serial.println("Error setting up MDNS responder!");
   }
+  influx = new InfluxDBClient(INFLUXDB_HOST, INFLUXDB_ORG, INFLUXDB_DATABASE, INFLUXDB_TOKEN);
 
-  influx.setDb(INFLUXDB_DATABASE);
-  influx_tick.setDb("ticks");
   epoch = millis()/1000;
   server.on("/", handleRoot);               // Call the 'handleRoot' function when a client requests URI "/"
-  server.onNotFound(handleNotFound);        // When a client requests an unknown URI (i.e. something other than "/"), call function "handleNotFound"
+  server.onNotFound(handleNotFound);        // When a client requests an unknown URI (i.e. something other than "/"), call function "handleNotFound" ss
   server.begin(); 
 
   EEPROM.begin(sizeof(thresholds));
@@ -174,7 +192,6 @@ if (MDNS.begin(MDNS_NAME)) {              // Start the mDNS responder for esp826
   Serial.print(text);
 
   // Tell the database we are starting up
-  tick_influx(String("started"), address,1.0);
 
   int udp = control.begin(8788);
   Serial.println("start UDP server on port 8788 " + String(udp)); 
@@ -307,7 +324,7 @@ void handleUDPPackets(void) {
     text = command(myData);
    
     control.beginPacket(control.remoteIP(),control.remotePort());
-    String answer = "ufh ldr > " + text + "\n";
+    String answer = ldr_name + " ldr > " + text + "\n";
     control.write(answer.c_str() );
     control.endPacket();
 
@@ -350,9 +367,9 @@ void loop() {
 if ( (current_ts - last_tick_ts)>TICK_INTERVAL_MS)
  {
   last_tick_ts = current_ts;
-  report_influx("ufh","level",(float)current_level);
-  String my_text = "ufh current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level );
-  loggit->send(my_text + "\n");
+  report_ldr_value("level",(float)current_level);
+  String my_text = ldr_name + " current " + String(current_level) + " max " + String(max_level) + " min " + String(min_level );
+  loggit->send(my_text);
   Serial.println(my_text);
  }
   boiler = boiler_no_change;
@@ -362,7 +379,6 @@ if ( (current_ts - last_tick_ts)>TICK_INTERVAL_MS)
       smooth_on = smooth_on + 1 ;
       if ( smooth_on == 3 )
       {
-         //Serial.println(" Boiler On");
          boiler = boiler_switched_on;
          smooth_off = 0;
       }
@@ -377,7 +393,6 @@ if ( (boiler_status == boiler_is_on ) && (a0pin <  thresholds.off_thresh ) )
       smooth_off = smooth_off + 1 ;
       if ( smooth_off == 3 )
       {
-         //Serial.println(" Boiler Off");
          boiler = boiler_switched_off;
          smooth_on = 0;
       }
@@ -393,20 +408,23 @@ if ( (boiler_status == boiler_is_on ) && (a0pin <  thresholds.off_thresh ) )
     break;
     case boiler_switched_on:
       Serial.println("Boiler switched on");
+      loggit->send("Boiler switched on");
       boiler_switched_on_time = millis()/1000;
       boiler_status = boiler_is_on;
-      tell_influx(boiler_is_on,0);
+      report_boiler_status(boiler_is_on,0);
     break;
     case boiler_switched_off:
       if ( boiler_status == boiler_is_on )
       {
         int boiler_on_for;
         boiler_on_for = (millis()/1000) - boiler_switched_on_time;
-        Serial.print("Boiler on for ");
-        Serial.print(boiler_on_for);
-        Serial.print(" seconds , boiler switched OFF\n");
+        String txt = "Boiler switched off after " ;
+        txt += boiler_on_for;
+        txt += " seconds , boiler switched OFF ";
+        loggit->send(txt);
+        Serial.println(txt);
         boiler_status=boiler_is_off;
-        tell_influx(boiler_is_off,boiler_on_for);
+        report_boiler_status(boiler_is_off,boiler_on_for);
       }
     break;
     default:
