@@ -72,9 +72,6 @@ struct Persistent {
   unsigned int off_thresh;
 } thresholds;
 
-
-
-
 unsigned int smooth_on = 0;
 unsigned int smooth_off = 0;
 
@@ -92,7 +89,7 @@ void report_boiler_status(BoilerState status, unsigned int time_interval)
   else
     ldr_on_off.addField("status","on");
   
-  ldr_on_off.addField("value",status==boiler_is_on?1:0);
+  ldr_on_off.addField("on_off",status==boiler_is_on?1:0);
 
   bool answer = influx->writePoint(ldr_on_off);
 
@@ -117,8 +114,8 @@ void report_ldr_value(String key,float value)
   {
     String txt;
     txt = influx->getLastErrorMessage();
-    txt = ldr_name + " Failed to send to influx " + txt;
-    Serial.print(txt);
+    txt = ldr_name + " Failed to send to influx " + txt ;
+    Serial.println(txt);
     loggit->send(txt);
   }
   else
@@ -166,6 +163,16 @@ void setup(void){
       Serial.println("Error setting up MDNS responder!");
   }
   influx = new InfluxDBClient(INFLUXDB_HOST, INFLUXDB_ORG, INFLUXDB_DATABASE, INFLUXDB_TOKEN);
+
+  String txt;
+  if ( influx->validateConnection() ) 
+      txt ="Influx Connection validated";
+  else
+       txt = "Influx Connection failed ";
+
+
+  Serial.println(txt);
+  loggit->send(txt);
 
   epoch = millis()/1000;
   server.on("/", handleRoot);               // Call the 'handleRoot' function when a client requests URI "/"

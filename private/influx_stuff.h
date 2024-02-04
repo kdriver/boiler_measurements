@@ -1,4 +1,4 @@
-#define INFLUXDB_HOST "http://piaware.local:8086"
+#define INFLUXDB_HOST "http://192.168.0.163:8086"
 //#define INFLUXDB_PORT "1337"
 #define INFLUXDB_ORG "59edb8553f90a315"
 #define INFLUXDB_DATABASE "boiler_measurements"
