@@ -1,0 +1,1 @@
+$HOME/Documents/idf_build/test_influx/project-name/components/xtensa-esp32-elf/bin/xtensa-esp32-elf-addr2line  -f -s -p -C -e .pio/build/ttgo-t1/firmware.elf $* 

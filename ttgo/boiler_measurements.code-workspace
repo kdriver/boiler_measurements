@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "ldr",
+			"path": "../ldr"
+		}
+	],
+	"settings": {}
+}

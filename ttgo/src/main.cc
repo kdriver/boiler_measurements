@@ -231,7 +231,7 @@ void setup()
 
     logging_server = MDNS.queryHost("piaware");
     Serial.println(logging_server.toString());
-    loggit = new UDPLogger(logging_server.toString().c_str(),(unsigned short int)LOGGIT_PORT);
+    loggit = new UDPLogger(logging_server,(unsigned short )LOGGIT_PORT);
     loggit->init();
 
     tft.init();
@@ -300,7 +300,7 @@ void loop(){
  
         
         http.useHTTP10(true);
-        http.begin("http://192.168.0.3:4443/numplanes");
+        http.begin("http://piaware.local:4443/numplanes");
         http.GET();
         json_text = http.getString();
         //loggit->send(json_text + "\n");
@@ -314,6 +314,7 @@ void loop(){
         tft.setTextSize(3);
         tft.setTextFont(1);
         tft.print("Planes : " + numplanes + "   ");
+        Serial.println(numplanes);
 
         how_long_left = round((( time_now - weather_time )/ full_time )*(dy-50));
         
