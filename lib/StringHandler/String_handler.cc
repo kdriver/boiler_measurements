@@ -2,20 +2,26 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <Arduino.h>
+
 
 
 StringHandler::StringHandler(const char *text,unsigned int num_cmds, CommandSet *cmds,unsigned int num_attr, AttributeSet *attrs)
 {
     unsigned long len;
+    unsigned int i = 0;
     // copy the string into an internal buffer
     if ( strlen(text) < max_input_length )
     {
-        strncpy(string_copy,text,500);
+        Serial.println("len of cli command is "+String(strlen(text)));
+        strcpy(string_copy,text);
     }
     len = strlen(string_copy);
-    for (unsigned int i=0;i<len;i++)
+    for (i=0;i<len;i++)
+    {
         string_copy[i] = toupper(string_copy[i]);
-    
+    }
+    string_copy[i]=0;
     num_tokens =0;
     num_commands = num_cmds;
     commands = cmds;
@@ -39,7 +45,7 @@ unsigned int StringHandler::tokenise(void)
     enum TokenState  { Searching,Collecting};
     TokenState now;
     now = Searching;
-
+    // Serial.println("tokenise ^" + String(string_copy) +"^");
     dest_iterator = &tokens[token][0];
     // skip over any leading white space
     do {
@@ -47,6 +53,8 @@ unsigned int StringHandler::tokenise(void)
             {
                 case '\n':
                 case ' ':
+                    // Serial.println("tokenise: whitespace");
+
                     if ( now == Collecting )
                     {
                         *dest_iterator = 0;
@@ -57,6 +65,8 @@ unsigned int StringHandler::tokenise(void)
                     input_iterator = input_iterator + 1;
                     break;
                 case 0:
+                    // Serial.println("tokenise: case null");
+
                     break;
                 case '=':
                     if ( now == Collecting )
@@ -73,12 +83,14 @@ unsigned int StringHandler::tokenise(void)
                     input_iterator = input_iterator + 1;
                     break;
                 default:
+                    // Serial.println("tokenise: default(" + String(*input_iterator)+")");
                     now = Collecting;
                     *dest_iterator = *input_iterator;
                     dest_iterator = dest_iterator + 1 ;
                     input_iterator = input_iterator + 1;
                     if ( *input_iterator == 0 )
                     {
+                        // Serial.println("tokenise: null");
                         *dest_iterator = 0;
                         token = token + 1 ;
                     }
@@ -87,8 +99,9 @@ unsigned int StringHandler::tokenise(void)
           
     }  while ((*input_iterator != 0 ) && (token < 5 ));
     
-    
     num_tokens = token;
+    // Serial.println(" found " + String(num_tokens) + " tokens");
+
     
     return token;
 }

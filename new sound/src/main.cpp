@@ -16,7 +16,8 @@
 #include <Button2.h>
 #include <Stringhandler.h>
 #include <ArduinoJson.h>
-
+// Select the Analog to Digital pin
+#define ADC A0
 
 TFT_eSPI tft = TFT_eSPI();   
 #define BUTTON_0 38
@@ -80,7 +81,7 @@ WiFiUDP  control;
 #define OFF_THRESHOLD 300
 #define WATCHDOG_INTERVAL 300
 // max value returned ffrom the sound sensor
-#define SENSOR_MAX   3500
+#define SENSOR_MAX   4000
 
 SimpleKalmanFilter *simpleKalmanFilter;
 //(2, 2, 0.01);
@@ -143,7 +144,7 @@ void create_graph(){
   // X grid starts at 0 with lines every 10 x-scale units
   // Y grid starts at -50 with lines every 25 y-scale units
   // blue grid
-  gr.setGraphGrid(0.0, 50, 0, SENSOR_MAX/5, TFT_BLUE);
+  gr.setGraphGrid(0.0, 50, 0, SENSOR_MAX/4, TFT_BLUE);
 
   // Draw empty graph, top left corner at 40,10 on TFT
   gr.drawGraph(0, tft.height()/2);
@@ -199,17 +200,22 @@ void IRAM_ATTR measureit();
 unsigned long measure_interval = sample_period;
 unsigned int measurements[2];
 
+// this counter redords how many times the measure method samples the sound in one measurement
+// typically 588 timmes
+unsigned int gcounter;
+
 unsigned int * measure() {
   // called on interrupt
   unsigned int max_val = 0;
-  unsigned int min_val = 1024;
+  unsigned int min_val = 3000;
   unsigned long start = millis();
   unsigned int reading;
   int pp,ppk;
+  gcounter=0;
 
   while ( millis() < ( start + measure_interval ))
   {
-      reading = analogRead(A0);
+      reading = analogRead(ADC);
       if ( reading < 5000 )
       {
          if ( reading > max_val )
@@ -217,6 +223,7 @@ unsigned int * measure() {
          if ( reading < min_val )
             min_val = reading;
       }
+      gcounter = gcounter +1;
   }
   // work out the peak to peak value measure over the interval
   pp = max_val - min_val;
@@ -586,7 +593,13 @@ void setup()
   previous_time = epoch;
   clean_display_time = epoch;
   //  Just set the threshold to the first reading. We'll average it out later.
-  threshold = analogRead(A0);
+  if ( !adcAttachPin(ADC) )
+    Serial.println("failed to attach adc to device");
+  else
+    Serial.println("ADC attached");
+
+  //  Just set the threshold to the first reading. We'll average it out later.
+  threshold = analogRead(ADC);
 
   // p_lcd("end of setup", 0, 0);
   Serial.println("setup is finnished\n");
@@ -631,7 +644,7 @@ String command(String udp_command)
 {
   bool ans;
   udp_command.toUpperCase();
-  udp_command.trim();
+ 
   StringHandler sh(udp_command.c_str(),sizeof(sound_commands)/sizeof(CommandSet),sound_commands,sizeof(sound_attributes)/sizeof(AttributeSet),sound_attributes);
   int toks;
   toks = sh.tokenise();
@@ -799,8 +812,9 @@ void handleUDPPackets(void)
     {
       myData += (char)packet[i];
     }
-    Serial.println(myData);
-    text = command("rx command  '" + myData + " ' ");
+    myData.trim();
+    Serial.println("handleUDPPackets: rx: : " + myData);
+    text = command(myData); //   parse the command line , stripping whitespace first
     IPAddress target = control.remoteIP();
     control.beginPacket(target, control.remotePort());
     String answer = "boiler ldr > " + text + "\n";
@@ -823,6 +837,7 @@ void loop()
 
   if ((time_now - last_time) > 2000)
   {
+    // Serial.println(" raw value is " + String(analogRead(ADC))+ " cycles " + String(gcounter));
     if ((time_now - clean_display_time) > (300 * 1000))
     {
       // wipe the display
@@ -850,8 +865,10 @@ void loop()
       p_lcd("was ON for " + String(on_for), 0, 2,TFT_WHITE);
       boiler_status_trace.addPoint(x_axis,0);
     }
-    p_lcd("threshold " + String(boiler_on_threshold_1), 0, 3,TFT_WHITE);
+    // p_lcd("threshold " + String(boiler_on_threshold_1), 0, 3,TFT_WHITE);
     ma = pp_history->moving_average(sample_average);
+    p_lcd("Ave " + String(ma) + " : thr " + String(boiler_on_threshold_1) + " ", 0, 3,TFT_CYAN);
+  
     // loggit->send(" MA is " + String(ma)+ " x_axis is " + String(x_axis));
     moving_average_trace.addPoint(x_axis,ma);
     x_axis = x_axis + 1 ; 
