@@ -43,12 +43,12 @@ enum orientation { LANDSCAPE, PORTRAIT };
 #include "influx_stuff.h"
 InfluxDBClient *tick_client,*data_client;
 
-Point tick("sound_tick");
+// Point tick("sound_tick");
 Point diag("boiler_sound");
 Point boiler_s("boiler_status");
 
 enum Command  { Get,Set,Help,Status,Reset};
-enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,MeasurementUncertainty,EstimationUncertainty,Noise,ResetCounter,Debug };
+enum Attribute { LoopDelay,SamplePeriod,SamplesForAverage,OnThreshold,MeasurementUncertainty,EstimationUncertainty,Noise,ResetCounter,Debug,LoopCounter };
 
 #include <StringHandler.h>
 CommandSet sound_commands[] = {{"GET", Get, 2}, {"SET", Set, 4}, {"HELP", Help, 1}, {"STATUS", Status, 1}, {"RESET", Reset, 1}};
@@ -61,7 +61,8 @@ AttributeSet sound_attributes[] = {
     {"ESTIMATION_UNCERTAINTY", EstimationUncertainty},
     {"NOISE", Noise},
     {"RESET_COUNTER", ResetCounter},
-    {"DEBUG", Debug}};
+    {"DEBUG", Debug},
+    {"LOOP_COUNTER",LoopCounter}};
 
 const char compile_date[] = __DATE__ " " __TIME__;
 WiFiUDP  control;
@@ -163,7 +164,7 @@ void report_event_to_influx(Point &p, unsigned int status, unsigned int time_int
   p.addField("interval_raw", (float)time_interval);
   p.addField("interval_mins", (float)(time_interval / 60));
   p.addField("interval", (float)(time_interval % 60));
-  p.addField("bolier_on", (float)status);
+  p.addField("boiler_on", (float)status);
 
   data_client->writePoint(p);
 
@@ -569,23 +570,23 @@ void setup()
   Serial.println(txt);
   loggit->send(txt);
 
-  tick.addTag("device", DEVICE);
-  tick.addTag("SSID", WiFi.SSID());
-  tick.addTag("IP", WiFi.localIP().toString());
+  // tick.addTag("device", DEVICE);
+  // tick.addTag("SSID", WiFi.SSID());
+  // tick.addTag("IP", WiFi.localIP().toString());
   Serial.print(INFLUXDB_HOST);
 
-  tick.clearFields();
+  // tick.clearFields();
   // Report RSSI of currently connected network
-  tick.addField("rssi", WiFi.RSSI());
-  if (!tick_client->writePoint(tick))
-  {
-    Serial.print("InfluxDB write failed: ");
-    Serial.println(tick_client->getLastErrorMessage());
-  }
-  else
-  {
-    Serial.println("wrote influx datapoint ok");
-  }
+  // tick.addField("rssi", WiFi.RSSI());
+  // if (!tick_client->writePoint(tick))
+  // {
+  //   Serial.print("InfluxDB write failed: ");
+  //   Serial.println(tick_client->getLastErrorMessage());
+  // }
+  // else
+  // {
+  //   Serial.println("wrote influx datapoint ok");
+  // }
   // tick_influx(String("initialised"), address,1.0);
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
@@ -690,6 +691,9 @@ String command(String udp_command)
            case Debug:
             answer = "DEBUG_ON : " + String(DEBUG_ON);
           break;
+           case LoopCounter:
+             answer = "Loop Counter : " + String(gcounter);
+          break;
           default:
             answer = "Unknown attribute " + String(sh.get_token(2));
           break;
@@ -738,6 +742,9 @@ String command(String udp_command)
                 DEBUG_ON = false;
               else
                 DEBUG_ON = true;
+            break;
+            case LoopCounter:
+              answer = "Loop Counter is Read Only";
             break;
             default:
               answer = "Unknown attribute " + String(sh.get_token(2));
