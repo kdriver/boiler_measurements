@@ -859,12 +859,12 @@ void loop()
       reset = true;
     }
     p_lcd(address + " " + String(time_now / 1000), 0, 1,TFT_WHITE);
-    if (boiler_status == true)
+    if (boiler_status == BOILER_ON )
     {
       p_lcd("BOILER ON ", 0, 0,TFT_GREEN);
       p_lcd("                  ", 0, 2);
       p_lcd("ON for " + String((time_now - boiler_switched_on_time) / 1000), 0, 2,TFT_WHITE);
-      boiler_status_trace.addPoint(x_axis,SENSOR_MAX);
+      boiler_status_trace.addPoint(x_axis,SENSOR_MAX-1);
     }
     else
     {
@@ -876,7 +876,7 @@ void loop()
     ma = pp_history->moving_average(sample_average);
     p_lcd("Ave " + String(ma) + " : thr " + String(boiler_on_threshold_1) + " ", 0, 3,TFT_CYAN);
   
-    // loggit->send(" MA is " + String(ma)+ " x_axis is " + String(x_axis));
+// Add point to graph, but if graph reaches width of graph,m then clear and start again.
     moving_average_trace.addPoint(x_axis,ma);
     x_axis = x_axis + 1 ; 
     if ( x_axis >= 240  ){
@@ -886,6 +886,7 @@ void loop()
       boiler_status_trace.startTrace(TFT_MAGENTA);
     }
     // history->add(abs_average);
+    // record the current movong average and the bloiler on/off status
     diag_influx(diag, ma, boiler_status);
 
     last_time = time_now;
@@ -907,8 +908,9 @@ void loop()
   if ((boiler_status == BOILER_OFF) && (boiler_on == true))
   {
     String text;
-    text = String("Boiler switched ON \n ");
+    text = String("Boiler burner switched ON \n ");
     loggit->send(text);
+    // report ON event to influx
     report_event_to_influx(boiler_s, BOILER_ON, 0);
     boiler_status = BOILER_ON;
     boiler_switched_on_time = time_now;
@@ -921,10 +923,11 @@ void loop()
     on_for = interval;
     if (interval > 5)
     {
+      // report OFF event ot influx - but only if its been on for more than 5 second
       report_event_to_influx(boiler_s, BOILER_OFF, interval);
     }
     boiler_status = BOILER_OFF;
-    sprintf(output, "boiler was on for %d seconds \n", interval);
+    sprintf(output, "boiler burner switched OFF , was on for %d seconds \n", interval);
     loggit->send(output);
   }
 }
