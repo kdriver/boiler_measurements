@@ -6,3 +6,10 @@
  //if used with authentication
 #define INFLUXDB_USER 
 #define INFLUXDB_PASS
+
+
+const char *influx_host ;
+const char *influx_token ;
+const char *influx_orgid ;
+const char *influx_org ;
+const char *influx_bucket ;

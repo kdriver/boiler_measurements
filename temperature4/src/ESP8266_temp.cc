@@ -1,9 +1,8 @@
 
-#define NAME "kitchen"
-
+#define NAME "study"
 
 //  define battery if this is montoring the 12V battery voltage as well as the temp
-//#define BATTERY 1
+// #define BATTERY 1
 #define BLUE_LED 2
 
 #if defined(ESP32)
@@ -27,25 +26,6 @@ mDNSResolver::Resolver resolver(udp);
 #define DEVICE "ESP8266"
 #endif
 
-/*
-#ifndef ESP32
-// ESP8266
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#define ONE_WIRE_BUS D2
-#include <mDNSResolver.h>
-WiFiUDP udp;
-mDNSResolver::Resolver resolver(udp);
-#else
-//ESP32
-#include <WiFi.h>
-#include <ESPmDNS.h>
-//#define ONE_WIRE_BUS GPIO_NUM_4
-#define ONE_WIRE_BUS 4
-#define DEVICE "ESP32"
-#define Influxdb InfluxDBClient
-#endif 
-*/
 
 #include <HTTPClient.h>
 #include <OneWire.h>
@@ -59,9 +39,9 @@ String CONFIG_HOST = "http://piaware.local:9090";
 String CONFIG_FILE = "/sensors.json";
 HTTPClient http;
 
-bool  deep_sleep = true;
+bool deep_sleep = true;
 #define US 1000000
-unsigned int sleep_for = 300 * US;  //300 seconds - 5 minutes.
+unsigned int sleep_for = 300 * US; // 300 seconds - 5 minutes.
 
 Point temperature(NAME);
 
@@ -69,17 +49,16 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 #include "influx_stuff.h"
 
-
 InfluxDBClient *influx;
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature DS18B20(&oneWire);
 IPAddress logging_server;
 
 bool reset = false;
-unsigned long int reset_time ;
+unsigned long int reset_time;
 
-const char* ssid = "cottage"; //your WiFi Name
-const char* password = WIFIPASSWORD;  //Your Wifi Password
+const char *ssid = "cottage";        // your WiFi Name
+const char *password = WIFIPASSWORD; // Your Wifi Password
 
 UDPLogger *loggit;
 
@@ -92,8 +71,8 @@ float resistor_ratio = 5.7;
 void connect_to_wifi()
 {
   WiFi.mode(WIFI_STA);
-  wifiMulti.addAP(ssid,password);
-  //WiFi.begin(ssid, password);
+  wifiMulti.addAP(ssid, password);
+  // WiFi.begin(ssid, password);
   int counter = 0;
   while (wifiMulti.run() != WL_CONNECTED)
   {
@@ -136,10 +115,10 @@ void connect_to_wifi()
 
 void send_measurement(float value)
 {
-   temperature.clearFields();
+  temperature.clearFields();
   // Report RSSI of currently connected network
   temperature.addField("rssi", WiFi.RSSI());
-  temperature.addField("temp",value);
+  temperature.addField("temp", value);
   bool answer = influx->writePoint(temperature);
 
   if (!answer)
@@ -156,15 +135,15 @@ void send_measurement_voltage(float battery_v)
 {
   temperature.clearFields();
 
-  temperature.addField("voltage",battery_v);
+  temperature.addField("voltage", battery_v);
   influx->writePoint(temperature);
 
-  loggit->send(temperature.toLineProtocol() );
+  loggit->send(temperature.toLineProtocol());
 }
 
 float current_temp = 0.0;
 
-//DS18B20 code
+// DS18B20 code
 float getTemperature()
 {
   float temp;
@@ -217,6 +196,9 @@ void get_configuration(void)
       //   Serial.println("decoded ok");
 
       JsonArray sensors_list = buffer["sensors"].as<JsonArray>();
+     
+      char the_text_buffer[500];
+
       // const char * name = buffer["sensors"][0]["name"];
       // Serial.println("First name is");
       // Serial.println(name);
@@ -230,20 +212,38 @@ void get_configuration(void)
         if (strcmp(n, NAME) == 0)
         {
           found = true;
-          char the_text_buffer[500];
           deep_sleep = strcmp(sensor["sleep"], "true") == 0;
           sleep_for = ((int)sensor["interval"]) * US;
           sprintf(the_text_buffer, "Match! Found my config for %s Deep sleep = %s for %d seconds", NAME, deep_sleep ? "true" : "false", sleep_for / US);
-          //Serial.print(the_text_buffer);
+          // Serial.print(the_text_buffer);
           loggit->send(the_text_buffer);
         }
       }
-      if ( found == false )
+
+      if (found == false)
       {
         deep_sleep = true;
-        sleep_for = 300 * US ; // 5mins
+        sleep_for = 300 * US; // 5mins
         loggit->send("No config found - defaults used");
       }
+      
+      influx_host = buffer["influx_config"]["host"];
+      influx_token = buffer["influx_config"]["token"];
+      influx_orgid = buffer["influx_config"]["organisationID"];
+      influx_org = buffer["influx_config"]["organisation"];
+      influx_bucket = buffer["influx_config"]["bucket"];
+
+      Serial.println("Influx Config:");
+      Serial.print(" host is         : ");
+      Serial.println(influx_host);
+      Serial.print(" token is        : ");
+      Serial.println(influx_token);
+      Serial.print(" orgID is        : ");
+      Serial.println(influx_orgid);
+      Serial.print(" organisation is : ");
+      Serial.println(influx_org);
+      Serial.print(" bucket is       : ");
+      Serial.println(influx_bucket);
     }
     else
     {
@@ -266,14 +266,8 @@ void setup()
   pinMode(ONE_WIRE_BUS, INPUT_PULLUP);
   pinMode(BLUE_LED, OUTPUT);
 
-  //  unsigned char devs;
-  //  bool devices = oneWire.search(&devs);
-
-  //  Serial.println("Search I2C devices , found : " + String(devices) + " : number of devs : " + String(devs));
-
   String influx_url;
-  // influx_url = "http://" + logging_server.toString() + ":8086";
-  // influx = new InfluxDBClient(influx_url.c_str(),INFLUXDB_DATABASE);
+
 
   Serial.println();
   Serial.println();
@@ -284,12 +278,11 @@ void setup()
 
   get_configuration();
 
-  influx_url = INFLUXDB_HOST;
-  influx = new InfluxDBClient(INFLUXDB_HOST, INFLUXDB_ORG, INFLUXDB_DATABASE, INFLUXDB_TOKEN);
+  influx = new InfluxDBClient(influx_host, influx_orgid, influx_bucket, influx_token);
 
   Serial.println("Built on " + String(compile_date));
   Serial.print("InfluxDB URL ");
-  Serial.println(INFLUXDB_HOST);
+  Serial.println(influx_host);
 
   if (influx->validateConnection())
   {
@@ -321,7 +314,7 @@ void setup()
   // end of code
 }
 
-unsigned long old_time=0;
+unsigned long old_time = 0;
 void loop()
 {
   if (deep_sleep)
