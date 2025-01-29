@@ -1,5 +1,5 @@
 
-#define NAME "desk"
+#define NAME "kitchen"
 
 
 //  define battery if this is montoring the 12V battery voltage as well as the temp
